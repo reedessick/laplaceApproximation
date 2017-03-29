@@ -4,8 +4,19 @@ __author__ = "Reed Essick (reed.essick@ligo.org)"
 #-------------------------------------------------
 
 import numpy as np
-import scipy
-import scipy.optimize ### contains nonlinear root finders
+import mpmath ### used for high-precision computation of modified bessel function
+from scipy.optimize import newton ### contains nonlinear root finders
+
+#-------------------------------------------------
+
+#--- general utility functions
+
+def sumLogs( arrayLike ):
+    '''
+    return ln(sum(np.exp(arrayLike))) to high accuracy
+    '''
+    maxVal = np.max(arrayLike)
+    return maxVal + np.log(np.sum(np.exp(np.array(arrayLike)-maxVal)))
 
 #-------------------------------------------------
 
@@ -38,10 +49,10 @@ def lnBSN_to_rho2( lnBSN, params, f_tol=1e-14 ):
 
     ### delegate to standard nonlinear root finder
     if isinstance(lnBSN, (float, int)): ### only one thing to do
-        return scipy.optimize.newton(func, 2*lnBSN, args=(lnBSN,), fprime=fprime, fprime2=fprime2, tol=f_tol)
+        return newton(func, 2*lnBSN, args=(lnBSN,), fprime=fprime, fprime2=fprime2, tol=f_tol)
 
     else:
-        ans = [scipy.optimize.newton(func, 2*lnbsn, args=(lnbsn,), fprime=fprime, fprime2=fprime2, tol=f_tol) for lnbsn in lnBSN]
+        ans = [newton(func, 2*lnbsn, args=(lnbsn,), fprime=fprime, fprime2=fprime2, tol=f_tol) for lnbsn in lnBSN]
         if isinstance(lnBSN, np.ndarray):
             ans = np.array(ans)
         return ans
@@ -90,29 +101,60 @@ def rhoA2rhoB2_to_rho2eta2( rhoA2, rhoB2 ):
 
 #--- define probabilty distributions given rhoA2o, rhoB2o
 
-def lnProb_rhoA2rhoB2_given_rhoA2orhoB2o( rhoA2o, rhoB2o ):
+def lnProb_rhoA2rhoB2_given_rhoA2orhoB2o( rhoA2, rhoB2, rhoA2o, rhoB2o ):
     '''
     return ln( p(rhoA2,rhoB2|rhoA2o,rhoB2o) )
 
     NOTE: essentially 2 independent chi2 distributions
     '''
-    raise NotImplementedError
+    if isinstance(rhoA2, (int,float)) and isintance(rhoB2, (int,float)) and isinstance(rhoA2o, (int,float)) and isinstance(rhoB2o, (int,float)):
+        return np.log(0.25) - 0.5*(rhoA2 + rhoB2 + rhoA2o + rhoB2o) \
+            + float(mpmath.log(mpmath.besseli(0, (rhoA2*rhoA2o)**0.5))) \
+            + float(mpmath.log(mpmath.besseli(0, (rhoB2*rhoB2o)**0.5)))
+    else:
+        N = len(rhoA2)
+        assert N==len(rhoB2), 'rhoA2 and rhoB2 do not have the same length'
+        assert N==len(rhoA2o), 'rhoA2 and rhoA2o do not have the same length'
+        assert N==len(rhoB2o), 'rhoA2 and rhoB2o do not have the same length'
 
-def lnProb_rho2eta2_given_rhoA2orhoB2o( rhoA2o, rhoB2o ):
+        log25 = np.log(0.25)
+        ans = [log25 - 0.5*(rhoa2 + rhob2 + rhoa2o + rhob2o) \
+            + float(mpmath.log(mpmath.besseli(0, (rhoa2*rhoa2o)**0.5))) \
+            + float(mpmath.log(mpmath.besseli(0, (rhob2*rhob2o)**0.5))) \
+            for rhoa2, rhob2, rhoa2o, rhob2o in zip(rhoA2, rhoB2, rhoA2o, rhoB2o)
+        ]
+        if isinstance(rhoA2, np.ndarray) or isinstance(rhoB2, np.ndarray) or isinstance(rhoA2o, np.ndarray) or isinstance(rhoB2o, np.ndarray):
+            ans = np.array(ans)
+
+        return ans
+
+def lnProb_rho2eta2_given_rhoA2orhoB2o( rho2, eta2, rhoA2o, rhoB2o ):
     '''
     return ln( p(rho2, eta2 | rhoA2o, rhoB2o) )
 
     NOTE: 2 independent chi2 distribution with jacobian for transformation of variables
     '''
-    raise NotImplementedError
+    rhoA2, rhoB2 = rho2eta2_to_rhoA2rhoB2( rho2, eta2 )
 
-def lnProb_lnBSNlnBCI_given_rhoA2orhoB2o( rhoA2o, rhoB2o ):
+    ### note, there are two solutions here (interchange of A<->B), so we include them both
+    ab = lnProb_rhoA2rhoB2_given_rhoA2orhoB2o( rhoA2, rhoB2, rhoA2o, rhoB2o )
+    ba = lnProb_rhoA2rhoB2_given_rhoA2orhoB2o( rhoB2, rhoA2, rhoA2o, rhoB2o )
+
+    return np.log(rho2) - 0.5*np.log(rho2**2 - 4*eta2*rho2) \
+        + sumLogs( [ab, ba] )    
+
+def lnProb_lnBSNlnBCI_given_rhoA2orhoB2o( lnBSN, lnBCI, rhoA2o, rhoB2o, params, f_tol=1e-14 ):
     '''
     return ln( p(lnBSN, lnBCI | rhoA2o, rhoB2o) )
 
     NOTE: 2 independent chi2 distributions with jacobian for transformation of variables
     '''
-    raise NotImplementedError
+    rho2 = lnBSN_to_rho2( lnBSN, params, f_tol=f_tol )
+    eta2 = lnBCI_to_eta2( lnBCI, params )
+
+    return np.log(rho2) - np.log(params.c_bsn + 0.5*rho2) \
+        + np.log(eta2) - np.log(params.c_bci) \
+        + lnProb_rho2eta2_given_rhoA2orhoB2o( rho2, eta2, rhoA2o, rhoB2o )
 
 #-------------------------------------------------
 
