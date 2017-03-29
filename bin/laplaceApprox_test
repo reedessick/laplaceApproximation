@@ -1,12 +1,13 @@
 #!/usr/bin/python
 
 __usage__ = "laplaceApprox_test [--options]"
-__description__ = "a test script to ensure out library functions work correctly"
+__description__ = "a test script to ensure our library functions work correctly"
 __author__ = "Reed Essick"
 
 #-------------------------------------------------
 
-from laplaceApproximation import utils
+from laplaceApprox import utils
+import numpy as np
 
 from optparse import OptionParser
 
@@ -15,9 +16,130 @@ from optparse import OptionParser
 parser = OptionParser(usage=__usage__, description=__description__)
 
 parser.add_option('-v', '--verbose', default=False, action='store_true')
+parser.add_option('-V', '--Verbose', default=False, action='store_true')
+
+### options about what to test
+
+parser.add_option('', '--e_tol', default=1e-10, type='float',
+    help='the relative error threshold for comparing floats')
+
+parser.add_option('', '--everything', default=False, action='store_true',
+    help='test everything')
+
+### options about testing mappings
+parser.add_option('', '--mappings', default=False, action='store_true',
+    help='test the mappings between statistics')
+
+parser.add_option('', '--Nsamp', default=100, type='int',
+    help='the number of randomly drawn samples are used for testing mappings')
+parser.add_option('', '--min-rho2', default=1, type='float',
+    help='the minimum single-IFO snr allowed in the random samples')
+parser.add_option('', '--max-rho2', default=100, type='float',
+    help='the maximum single-IFO snr allowed in the random samples')
+
+parser.add_option('', '--f_tol', default=1e-14, type='float',
+    help='the tolerance passed to nonlinear root finders')
+
+parser.add_option('', '--c_bsn', default=1.0, type='float',
+    help='passed to BayesMapParams')
+parser.add_option('', '--g_bsn', default=1.0, type='float',
+    help='passed to BayesMapParams')
+parser.add_option('', '--c_bci', default=1.0, type='float',
+    help='passed to BayesMapParams')
+parser.add_option('', '--g_bci', default=1.0, type='float',
+    help='passed to BayesMapParams')
+
+### options about testing probability distributions
+parser.add_option('', '--logProbs', default=False, action='store_true',
+    help='test lnProb(*args|rhoA2o,rhoB2o) functionality')
 
 opts, args = parser.parse_args()
 
+opts.Verbose = opts.Verbose or opts.verbose
+
 #-------------------------------------------------
 
-raise NotImplementedError, 'WRITE ME!'
+#--- mappings between statistics
+if opts.everything or opts.mappings:
+    if opts.verbose:
+        print( 'testing mappings between statistics with %d randomly drawn samples'%(opts.Nsamp) )
+    
+    ### set up mapping parameters
+    params = utils.BayesMapParams(
+        c_bsn = opts.c_bsn,
+        g_bsn = opts.g_bsn,
+        c_bci = opts.c_bci,
+        g_bci = opts.g_bci,
+    )
+
+    ### randomly draw rhoA2, rhoB2
+    rhoA2, rhoB2 = opts.min_rho2 + np.random.rand(2,opts.Nsamp)*(opts.max_rho2 - opts.min_rho2)
+
+    #--- test mappings between rhoA2,rhoB2 <-> rho2, eta2
+
+    ### assert invariance under interchange of IFO labels
+    x = np.array(utils.rhoA2rhoB2_to_rho2eta2( rhoA2, rhoB2 ))
+    y = np.array(utils.rhoA2rhoB2_to_rho2eta2( rhoB2, rhoA2 ))
+
+    assert np.all(np.abs(x-y) < opts.e_tol*(x+y)), 'mapping from rhoA2,rhoB2 -> rho2, eta2 is not symmetric under interchange of rhoA2<->rhoB2'
+    if opts.Verbose:
+        print( '    mapping from rhoA2,rhoB2 -> rho2,eta2 is symmetric under interchange of rhoA2<->rhoB2' )
+ 
+    ### assert require x=map^-1(map(x))
+    rho2, eta2 = x
+    x = np.array(utils.rho2eta2_to_rhoA2rhoB2( rho2, eta2 ))
+    _ = np.array([rhoA2, rhoB2])
+    y = np.array([np.max(_, axis=0), np.min(_, axis=0)]) ### required to get the ordering to match what we expect from rho2eta2_to_rhoA2rhoB2
+
+    assert np.all(np.abs(x-y) < opts.e_tol*(x+y)), 'mapping from rhoA2,rhoB2 <-> rho2,eta2 is not reversible'
+    if opts.Verbose:
+        print( '    mapping from rhoA2,rhoB2 <-> rho2,eta2 is reversible' )
+
+    #--- test mappings between eta2 <-> lnBCI
+    x = utils.lnBCI_to_eta2( utils.eta2_to_lnBCI( eta2, params ), params )
+
+    assert np.all(np.abs(x-eta2) < opts.e_tol*(x+eta2)), 'mapping from eta2 <-> lnBCI is not reversible'
+    if opts.Verbose:
+        print( '    mapping from eta2<->lnBCI is reversible' )
+
+    #--- test mappings between rho2 <-> lnBSN
+    x = utils.lnBSN_to_rho2( utils.rho2_to_lnBSN( rho2, params ), params, f_tol=opts.f_tol )
+
+    assert np.all(np.abs(x-rho2) < opts.e_tol*(x+rho2)), 'mapping from rho2 <-> lnBSN is not reversible'
+    if opts.Verbose:
+        print( '    mapping from rho2<->lnBSN is reversible' )
+
+    #--- finished with mappings
+    if opts.verbose:
+        print( '    mappings passed all tests sucessfully!' )
+
+#-------------------------------------------------
+
+#--- lnProb functions
+if opts.everything or opts.logProbs:
+    if opts.verbose:
+        print( 'testing lnProb(*args|rhoA2o,rhoB2o) functionality' )
+
+    #--- test lnProb(rhoA2,rhoB2|rhoA2o,rhoB2o)
+
+    ### normalization
+    raise NotImplementedError, 'test normalization of lnProb(rhoA2,rhoB2|rhoA2o,rhoB2o)'
+
+    ### symmetry under A<->B
+    raise NotImplementedError, 'test symmetry of lnProb(rhoA2,rhoB2|rhoA2o,rhoB2o) under A<->B'
+
+    #--- test lnProb(rho2,eta2|rhoA2o,rhoB2o)
+
+    ### normalization
+    raise NotImplementedError, 'test normalization of lnProb(rho2,eta2|rhoA2o,rhoB2o)'
+
+    ### symmetry under A<->B
+    raise NotImplementedError, 'test symmetry of lnProb(rho2,eta2|rhoA2o,rhoB2o) under A<->B'
+
+    #--- test lnProb(lnBSN,lnBCI|rhoA2o,rhoB2o)
+
+    ### normalization
+    raise NotImplementedError, 'test normalization of lnProb(lnBSN,lnBCI|rhoA2o,rhoB2o)'
+
+    ### symmetry under A<->B
+    raise NotImplementedError, 'test symmetry of lnProb(lnBSN,lnBCI|rhoA2o,rhoB2o) under A<->B'
