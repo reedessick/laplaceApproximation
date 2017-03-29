@@ -1,0 +1,23 @@
+#!/usr/bin/python
+
+__usage__ = "laplaceApprox_test [--options]"
+__description__ = "a test script to ensure out library functions work correctly"
+__author__ = "Reed Essick"
+
+#-------------------------------------------------
+
+from laplaceApproximation import utils
+
+from optparse import OptionParser
+
+#-------------------------------------------------
+
+parser = OptionParser(usage=__usage__, description=__description__)
+
+parser.add_option('-v', '--verbose', default=False, action='store_true')
+
+opts, args = parser.parse_args()
+
+#-------------------------------------------------
+
+raise NotImplementedError, 'WRITE ME!'
