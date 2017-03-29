@@ -1,0 +1,104 @@
+#!/usr/bin/python
+
+__usage__ = "laplaceApprox_sanityCheck [--options]"
+__description__ = "a test script to ensure our some heuristics look correct, specifically things that are hard to put in an assertion statement"
+__author__ = "Reed Essick"
+
+#-------------------------------------------------
+
+from laplaceApprox import utils
+import numpy as np
+
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
+from optparse import OptionParser
+
+#-------------------------------------------------
+
+parser = OptionParser(usage=__usage__, description=__description__)
+
+parser.add_option('-v', '--verbose', default=False, action='store_true')
+parser.add_option('-V', '--Verbose', default=False, action='store_true')
+
+### options about how accurate nonlinear solvers are required to be
+
+parser.add_option('', '--f_tol', default=1e-10, type='float',
+    help='the tolerance passed to nonlinear root finders')
+
+### options about how we test
+
+parser.add_option('', '--e_tol', default=1e-10, type='float',
+    help='the relative error threshold for comparing floats')
+
+parser.add_option('', '--Nsamp', default=100, type='int',
+    help='the number of randomly drawn samples are used for testing')
+
+parser.add_option('', '--min-rho2', default=1, type='float',
+    help='the minimum single-IFO snr allowed in the random samples')
+parser.add_option('', '--max-rho2', default=100, type='float',
+    help='the maximum single-IFO snr allowed in the random samples')
+
+parser.add_option('', '--c_bsn', default=1.0, type='float',
+    help='passed to BayesMapParams')
+parser.add_option('', '--g_bsn', default=1.0, type='float',
+    help='passed to BayesMapParams')
+parser.add_option('', '--c_bci', default=1.0, type='float',
+    help='passed to BayesMapParams')
+parser.add_option('', '--g_bci', default=1.0, type='float',
+    help='passed to BayesMapParams')
+
+
+### optsions about what to test
+parser.add_option('', '--everything', default=False, action='store_true',
+    help='test everything')
+
+parser.add_option('', '--logProbs', default=False, action='store_true',
+    help='test lnProb(*args|rhoA2o,rhoB2o) sanity')
+
+opts, args = parser.parse_args()
+
+opts.verbose = opts.Verbose or opts.verbose
+
+#-------------------------------------------------
+
+#--- lnProb functions
+if opts.everything or opts.logProbs:
+    if opts.verbose:
+        print( 'testing lnProb(*args|rhoA2o,rhoB2o) functionality with %d randomly drawn samples'%(opts.Nsamp) )
+
+    ### set up mapping parameters
+    params = utils.BayesMapParams(
+        c_bsn = opts.c_bsn,
+        g_bsn = opts.g_bsn,
+        c_bci = opts.c_bci,
+        g_bci = opts.g_bci,
+    )
+
+    ### randomly draw samples
+    rhoA2, rhoB2, rhoA2o, rhoB2o = opts.min_rho2 + np.random.rand(4,opts.Nsamp)*(opts.max_rho2 - opts.min_rho2)
+
+    ### convert to useful variables
+    rho2, eta2 = utils.rhoA2rhoB2_to_rho2eta2( rhoA2, rhoB2 )
+    lnBSN = utils.rho2_to_lnBSN( rho2, params )
+    lnBCI = utils.eta2_to_lnBCI( eta2, params )
+
+    #--- test lnProb(rhoA2,rhoB2|rhoA2o,rhoB2o)
+
+    ### mode
+    raise NotImplementedError, 'need to ensure the mode of lnProb(rhoA2,rhoB2|rhoA2o,rhoB2o) is near where you might expect'
+
+    #--- test lnProb(rho2,eta2|rhoA2o,rhoB2o)
+
+    ### mode
+    raise NotImplementedError, 'need to ensure the mode of lnProb(rho2,eta2|rhoA2o,rhoB2o) is near where you might expect'
+
+    #--- test lnProb(lnBSN,lnBCI|rhoA2o,rhoB2o)
+
+    ### mode
+    raise NotImplementedError, 'need to ensure the mode of lnProb(lnBSN,lnBCI|rhoA2o,rhoB2o) is near where you might expect'
+
+    #--- finished
+    if opts.verbose:
+        print( 'logProbs passed all tests successfully' )
