@@ -167,6 +167,56 @@ if opts.everything or opts.logProbs:
     if opts.Verbose:
         print( '    lnProb(lnBSN,lnBCI|rhoA2o,rhoB2o) is symmetric under A<->B' )
 
+    #--- test lnProb(rhoA2|rhoA2o,rhoB2o) and lnProb(rhoB2|rhoB)
+
+    ### symmetry between whichever method we call. 
+    x = utils.lnProb_rhoA2_given_rhoA2o( rhoA2, rhoA2o )
+    y = utils.lnProb_rhoB2_given_rhoB20( rhoB2, rhoB2o )
+
+    assert np.all(np.abs(x-y) < opts.e_tol*np.abs(x+y)), 'lnProb(rhoA2|rhoA2o) and lnProb(rhoB2|rhoB2o) are not symmetric under A<->B'
+    if opts.Verbose:
+        print( '    lnProb(rhoA2|rhoA2o) and lnProb(rhoB2|rhoB2o) are symmetric under A<->B' )
+
+    #--- test lnProb(rho2|rhoA2o,rhoB2o)
+
+    ### symmetry under A<->B
+    x = utils.lnProb_rho2_given_rhoA2orhoB2o( rho2, rhoA2o, rhoB2o )
+    y = utils.lnProb_rho2_given_rhoA2orhoB2o( rho2, rhoB2o, rhoA2o )
+
+    assert np.all(np.abs(x-y) < opts.e_tol*np.abs(x+y)), 'lnProb(rho2|rhoA2o,rhoB2o) is not symmetric under A<->B'
+    if opts.Verbose:
+        print( '    lnProb(rho2|rhoA2o,rhoB2o) is symmetric under A<->B' )
+
+    #--- test lnProb(eta2|rhoA2o,rhoB2o)
+
+    ### symmetry under A<->B
+    x = utils.lnProb_eta2_given_rhoA2orhoB2o( eta2, rhoA2o, rhoB2o )
+    y = utils.lnProb_eta2_given_rhoA2orhoB2o( eta2, rhoB2o, rhoA2o )
+
+    assert np.all(np.abs(x-y) < opts.e_tol*np.abs(x+y)), 'lnProb(eta2|rhoA2o,rhoB2o) is not symmetric under A<->B'
+    if opts.Verbose:
+        print( '    lnProb(eta2|rhoA2o,rhoB2o) is symmetric under A<->B' )
+
+    #--- test lnProb(lnBSN|rhoA2o,rhoB2o)
+
+    ### symmetry under A<->B
+    x = utils.lnProb_lnBSN_given_rhoA2orhoB2o( lnBSN, rhoA2o, rhoB2o, params, f_tol=opts.f_tol )
+    y = utils.lnProb_lnBSN_given_rhoA2orhoB2o( lnBSN, rhoB2o, rhoA2o, params, f_tol=opts.f_tol )
+
+    assert np.all(np.abs(x-y) < opts.e_tol*np.abs(x+y)), 'lnProb(lnBSN|rhoA2o,rhoB2o) is not symmetric under A<->B'
+    if opts.Verbose:
+        print( '    lnProb(lnBSN|rhoA2o,rhoB2o) is symmetric under A<->B' )
+
+    #--- test lnProb(lnBCI|rhoA2o,rhoB2o)
+
+    ### symmetry under A<->B
+    x = utils.lnProb_lnBCI_given_rhoA2orhoB2o( lnBSN, rhoA2o, rhoB2o, params )
+    y = utils.lnProb_lnBCI_given_rhoA2orhoB2o( lnBSN, rhoB2o, rhoA2o, params )
+
+    assert np.all(np.abs(x-y) < opts.e_tol*np.abs(x+y)), 'lnProb(lnBCI|rhoA2o,rhoB2o) is not symmetric under A<->B'
+    if opts.Verbose:
+        print( '    lnProb(lnBCI|rhoA2o,rhoB2o) is symmetric under A<->B' )
+
     #--- finished
     if opts.verbose:
         print( 'logProbs passed all tests successfully' )

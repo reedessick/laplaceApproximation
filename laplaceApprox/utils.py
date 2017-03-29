@@ -143,7 +143,7 @@ def lnProb_rho2eta2_given_rhoA2orhoB2o( rho2, eta2, rhoA2o, rhoB2o ):
     return np.log(rho2) - 0.5*np.log(rho2**2 - 4*eta2*rho2) \
         + sumLogs( [ab, ba] )    
 
-def lnProb_lnBSNlnBCI_given_rhoA2orhoB2o( lnBSN, lnBCI, rhoA2o, rhoB2o, params, f_tol=1e-14 ):
+def lnProb_lnBSNlnBCI_given_rhoA2orhoB2o( lnBSN, lnBCI, rhoA2o, rhoB2o, params, f_tol=1e-10 ):
     '''
     return ln( p(lnBSN, lnBCI | rhoA2o, rhoB2o) )
 
@@ -155,6 +155,62 @@ def lnProb_lnBSNlnBCI_given_rhoA2orhoB2o( lnBSN, lnBCI, rhoA2o, rhoB2o, params, 
     return np.log(rho2) - np.log(params.c_bsn + 0.5*rho2) \
         + np.log(eta2) - np.log(params.c_bci) \
         + lnProb_rho2eta2_given_rhoA2orhoB2o( rho2, eta2, rhoA2o, rhoB2o )
+
+#--- marginal distributions
+
+def lnProb_rhoA2_given_rhoA2o( rhoA2, rhoA2o ):
+    '''
+    return ln( p(rhoA2 | rhoA2o)
+
+    NOTE: essentially a chi2 distribution
+    '''
+    if isinstance(rhoA2, (int,float)) and isinstance(rhoA2o, (int,float)):
+        return np.log(0.5) - 0.5*(rhoA2 + rhoA2o) \
+            + float(mpmath.log(mpmath.besseli(0, (rhoA2*rhoA2o)**0.5)))
+    else:
+        assert len(rhoA2)==len(rhoA2o), 'rhoA2 and rhoA2o do not have the same length'
+
+        log5 = np.log(0.5)
+        ans = [log5 - 0.5*(rhoa2 + rhoa2o) \
+            + float(mpmath.log(mpmath.besseli(0, (rhoa2*rhoa2o)**0.5))) \
+            for rhoa2, rhoa2o in zip(rhoA2, rhoA2o)
+        ]
+        if isinstance(rhoA2, np.ndarray) or isinstance(rhoA2o, np.ndarray):
+            ans = np.array(ans)
+
+        return ans
+
+def lnProb_rhoB2_given_rhoB2o( rhoB2, rhoB2o ):
+    '''
+    return ln( p(rhoB2 | rhoB2o)
+
+    NOTE: essentially a chi2 distribution
+    '''
+    return lnProb_rhoA2_given_rhoA2o( rhoB2, rhoB2o )
+
+def lnProb_rho2_given_rhoA2orhoB2o( rho2, rhoA2o, rhoB2o ):
+    '''
+    return ln( p(rho2 | rhoA2o, rhoB2o)
+    '''
+    raise NotImplementedError
+
+def lnProb_eta2_given_rhoA2orhoB2o( eta2, rhoA2o, rhoB2o ):
+    '''
+    return ln( p(eta2 | rhoA2o, rhoB2o)
+    '''
+    raise NotImplementedError
+
+def lnProb_lnBSN_given_rhoA2orhoB2o( lnBSN, rhoA2o, rhoB2o, params, f_tol=1e-10 ):
+    '''
+    return ln( p(lnBSN | rhoA2o, rhoB2o)
+    '''
+    raise NotImplementedError
+
+def lnProb_lnBCI_given_rhoA2orhoB2o( lnBCI, rhoA2o, rhoB2o, params ):
+    '''
+    return ln( p(lnBCI | rhoA2o, rhoB2o)
+    '''
+    raise NotImplementedError
 
 #-------------------------------------------------
 
