@@ -35,7 +35,7 @@ class BayesMapParams(object):
 
 #--- mappings between bayes factors and SNR-like statistics
 
-def lnBSN_to_rho2( lnBSN, params, f_tol=1e-14 ):
+def lnBSN_to_rho2( lnBSN, params, f_tol=1e-10 ):
     '''
     computes rho2(lnBSN)
     
@@ -107,7 +107,7 @@ def lnProb_rhoA2rhoB2_given_rhoA2orhoB2o( rhoA2, rhoB2, rhoA2o, rhoB2o ):
 
     NOTE: essentially 2 independent chi2 distributions
     '''
-    if isinstance(rhoA2, (int,float)) and isintance(rhoB2, (int,float)) and isinstance(rhoA2o, (int,float)) and isinstance(rhoB2o, (int,float)):
+    if isinstance(rhoA2, (int,float)) and isinstance(rhoB2, (int,float)) and isinstance(rhoA2o, (int,float)) and isinstance(rhoB2o, (int,float)):
         return np.log(0.25) - 0.5*(rhoA2 + rhoB2 + rhoA2o + rhoB2o) \
             + float(mpmath.log(mpmath.besseli(0, (rhoA2*rhoA2o)**0.5))) \
             + float(mpmath.log(mpmath.besseli(0, (rhoB2*rhoB2o)**0.5)))
