@@ -20,7 +20,7 @@ parser.add_option('-V', '--Verbose', default=False, action='store_true')
 
 ### options about how accurate nonlinear solvers are required to be
 
-parser.add_option('', '--f_tol', default=1e-14, type='float',
+parser.add_option('', '--f_tol', default=1e-10, type='float',
     help='the tolerance passed to nonlinear root finders')
 
 ### options about how we test
@@ -146,9 +146,9 @@ if opts.everything or opts.logProbs:
 
     #--- test lnProb(rhoA2,rhoB2|rhoA2o,rhoB2o)
 
-    ### normalization
+    ### mode
     if not opts.skip:
-        raise NotImplementedError, 'test normalization of lnProb(rhoA2,rhoB2|rhoA2o,rhoB2o)'
+        raise NotImplementedError, 'need to ensure the mode of lnProb(rhoA2,rhoB2|rhoA2o,rhoB2o) is near where you might expect'
 
     ### symmetry under A<->B
     x = utils.lnProb_rhoA2rhoB2_given_rhoA2orhoB2o( rhoA2, rhoB2, rhoA2o, rhoB2o )
@@ -160,9 +160,9 @@ if opts.everything or opts.logProbs:
 
     #--- test lnProb(rho2,eta2|rhoA2o,rhoB2o)
 
-    ### normalization
+    ### mode
     if not opts.skip:
-        raise NotImplementedError, 'test normalization of lnProb(rho2,eta2|rhoA2o,rhoB2o)'
+        raise NotImplementedError, 'need to ensure the mode of lnProb(rho2,eta2|rhoA2o,rhoB2o) is near where you might expect'
 
     ### symmetry under A<->B
     x = utils.lnProb_rho2eta2_given_rhoA2orhoB2o( rho2, eta2, rhoA2o, rhoB2o )
@@ -174,9 +174,9 @@ if opts.everything or opts.logProbs:
 
     #--- test lnProb(lnBSN,lnBCI|rhoA2o,rhoB2o)
 
-    ### normalization
+    ### mode
     if not opts.skip:
-        raise NotImplementedError, 'test normalization of lnProb(lnBSN,lnBCI|rhoA2o,rhoB2o)'
+        raise NotImplementedError, 'need to ensure the mode of lnProb(lnBSN,lnBCI|rhoA2o,rhoB2o) is near where you might expect'
 
     ### symmetry under A<->B
     x = utils.lnProb_lnBSNlnBCI_given_rhoA2orhoB2o( lnBSN, lnBCI, rhoA2o, rhoB2o, params, f_tol=opts.f_tol )
