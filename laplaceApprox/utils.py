@@ -140,7 +140,7 @@ def lnProb_rho2eta2_given_rhoA2orhoB2o( rho2, eta2, rhoA2o, rhoB2o ):
     ab = lnProb_rhoA2rhoB2_given_rhoA2orhoB2o( rhoA2, rhoB2, rhoA2o, rhoB2o )
     ba = lnProb_rhoA2rhoB2_given_rhoA2orhoB2o( rhoB2, rhoA2, rhoA2o, rhoB2o )
 
-    return np.log(rho2) - 0.5*np.log(rho2**2 - 4*eta2*rho2) \
+    return 0.5*(np.log(rho2) - np.log(rho2 - 4*eta2)) \
         + sumLogs( [ab, ba] )    
 
 def lnProb_lnBSNlnBCI_given_rhoA2orhoB2o( lnBSN, lnBCI, rhoA2o, rhoB2o, params, f_tol=1e-10 ):
