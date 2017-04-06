@@ -61,10 +61,15 @@ parser.add_option('', '--Nsamp', default=100, type='int',
 parser.add_option('', '--distrib', default='uniform', type='string',
     help='the type of distribution used to sample (rho2Ao, rho2Bo). Must be one of : %s'%(', '.join(utils.known)))
 
-parser.add_option('', '--min-rho2', default=5, type='float',
-    help='mimimum rho2 used to determine grid')
-parser.add_option('', '--max-rho2', default=50, type='float',
-    help='maximum rho2 used to determine grid')
+parser.add_option('', '--min-lnBSN', default=5, type='float',
+    help='mimimum used to determine grid')
+parser.add_option('', '--max-lnBSN', default=50, type='float',
+    help='maximum used to determine grid')
+
+parser.add_option('', '--min-lnBCI', default=5, type='float',
+    help='mimimum used to determine grid')
+parser.add_option('', '--max-lnBCI', default=50, type='float',
+    help='maximum used to determine grid')
 
 opts, args = parser.parse_args()
 
@@ -88,16 +93,7 @@ if opts.verbose:
 params = utils.BayesMapParams(c_bsn=opts.c_bsn, g_bsn=opts.g_bsn, c_bci=opts.c_bci, g_bci=opts.g_bci)
 
 ### determine grid
-min_rho2, min_eta2 = utils.rhoA2rhoB2_to_rho2eta2( opts.min_rho2, opts.min_rho2 )
-max_rho2, max_eta2 = utils.rhoA2rhoB2_to_rho2eta2( opts.max_rho2, opts.max_rho2 )
-
-min_lnBSN = utils.rho2_to_lnBSN( min_rho2, params )
-max_lnBSN = utils.rho2_to_lnBSN( max_rho2, params )
-
-min_lnBCI = utils.eta2_to_lnBCI( min_eta2, params )
-max_lnBCI = utils.eta2_to_lnBCI( max_eta2, params )
-
-lnBSN, lnBCI = np.meshgrid( np.linspace(min_lnBSN, max_lnBSN, opts.Ngrid), np.linspace(min_lnBCI, max_lnBCI, opts.Ngrid) )
+lnBSN, lnBCI = np.meshgrid( np.linspace(opts.min_lnBSN, opts.max_lnBSN, opts.Ngrid), np.linspace(opts.min_lnBCI, opts.max_lnBCI, opts.Ngrid) )
 lnBSN = lnBSN.flatten()
 lnBCI = lnBCI.flatten()
 
@@ -139,7 +135,7 @@ if opts.verbose:
 fig = plt.figure(figsize=(opts.figwidth, opts.figheight))
 ax = fig.gca()
 
-extent = [min_lnBSN, max_lnBSN, min_lnBCI, max_lnBCI]
+extent = [np.min(lnBSN), np.max(lnBSN), np.min(lnBCI), np.max(lnBCI)]
 
 imag = ax.imshow(
     lnProb, 
