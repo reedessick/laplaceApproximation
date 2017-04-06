@@ -11,12 +11,12 @@ from scipy.optimize import newton ### contains nonlinear root finders
 
 #--- general utility functions
 
-def sumLogs( arrayLike ):
+def sumLogs( arrayLike, axis=0 ):
     '''
     return ln(sum(np.exp(arrayLike))) to high accuracy
     '''
-    maxVal = np.max(arrayLike)
-    return maxVal + np.log(np.sum(np.exp(np.array(arrayLike)-maxVal)))
+    maxVal = np.max(arrayLike, axis=axis)
+    return maxVal + np.log(np.sum(np.exp(np.array(arrayLike)-maxVal), axis=axis))
 
 #-------------------------------------------------
 
@@ -52,10 +52,8 @@ def lnBSN_to_rho2( lnBSN, params, f_tol=1e-10 ):
         return newton(func, 2*lnBSN, args=(lnBSN,), fprime=fprime, fprime2=fprime2, tol=f_tol)
 
     else:
-        ans = [newton(func, 2*lnbsn, args=(lnbsn,), fprime=fprime, fprime2=fprime2, tol=f_tol) for lnbsn in lnBSN]
-        if isinstance(lnBSN, np.ndarray):
-            ans = np.array(ans)
-        return ans
+        lnBSN = np.array(lnBSN)
+        return np.array([newton(func, 2*lnbsn, args=(lnbsn,), fprime=fprime, fprime2=fprime2, tol=f_tol) for lnbsn in lnBSN.flatten()]).reshape(lnBSN.shape)
 
 def rho2_to_lnBSN( rho2, params ):
     '''
@@ -215,6 +213,45 @@ def lnProb_lnBCI_given_rhoA2orhoB2o( lnBCI, rhoA2o, rhoB2o, params ):
 #-------------------------------------------------
 
 #--- define marginalization routines
+
+known = {
+    'uniform' : [
+        'min_rhoA2o', 
+        'max_rhoA2o', 
+        'min_rhoB2o', 
+        'max_rhoB2o',
+    ],
+    'uniform_rho2o-fixed_eta2o' : [
+        'min_rho2o',
+        'max_rho2o',
+        'eta2oOVERrho2o',
+    ],
+}
+
+def sample_rhoA2orhoB2o( Nsamp, distrib='uniform', **kwargs ):
+    '''
+    generates Nsamp samples from the joint distribution of (rhoA2o, rhoB2o)
+    the type of distribution is determined by distrib (and kwargs)
+
+    note, distrib must be one of laplaceApprox.utils.known_rhoA2orhoB2o_distribs
+    '''
+    assert distrib in known.keys(), \
+        'distrib=%s is not known. Please choose from : %s'%(distrib, ', '.join(known.keys()))
+    assert np.all( kwargs.has_key(required) for required in known[distrib] ), \
+        'distrib=%s requires kwargs : %s'%(distrib, ', '.join(known[distrib]))
+
+    if distrib=='uniform':
+        return \
+            kwargs['min_rhoA2o'] + (kwargs['max_rhoA2o']-kwargs['min_rhoA2o'])*np.random.rand(Nsamp), \
+            kwargs['min_rhoB2o'] + (kwargs['max_rhoB2o']-kwargs['min_rhoB2o'])*np.random.rand(Nsamp)
+
+    elif distrib=="uniform_rho2o-fixed_eta2o":
+        rho2o = kwargs['min_rho2o'] + (kwargs['max_rho2o']-kwargs['min_rho2o'])*np.random.rand(Nsamp)
+        eta2o = kwargs['eta2oOVERrho2o']*rho2o
+        return rho2eta2_to_rhoA2rhoB2( rho2o, eta2o )
+
+    else:
+        raise ValueError, 'no sampling algorithm defined for distrib=%s. Please choose from : %s'%(distrib, ', '.join(known.keys()))
 
 '''
 Define marignalization routines
