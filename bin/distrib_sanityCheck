@@ -125,7 +125,7 @@ for ind, (rhoA2o, rhoB2o) in enumerate(zip(*samples)):
 
     lnProb = utils.sumLogs(np.array([lnProb, dprob]), axis=0)
 
-lnProb = lnProb.reshape((opts.Ngrid,opts.Ngrid)) ### reshape to a raster of pixels
+lnProb = lnProb.reshape((opts.Ngrid,opts.Ngrid)) - np.log(opts.Nsamp) ### reshape to a raster of pixels
 
 #------------------------
 
