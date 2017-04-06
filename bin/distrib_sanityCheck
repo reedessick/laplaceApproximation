@@ -1,0 +1,171 @@
+#!/usr/bin/python
+
+__usage__ = 'distrib_sanityCheck [--options] key,value key,value key,value ...'
+__description__ = "written to make sure the posteriors for lnBSN and lnBCI follow the expected trends as we inject a population of signals. Key value pairs are passed to laplaceApprox.utils.sample_rhoA2orhoB2o after values are cast to floats"
+__author__ = "Reed Essick (reed.essick@ligo.org)"
+
+#-------------------------------------------------
+
+import os
+import numpy as np
+
+from laplaceApprox import utils
+
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
+from optparse import OptionParser
+
+#-------------------------------------------------
+
+parser = OptionParser(usage=__usage__, description=__description__)
+
+### verbosity and output
+
+parser.add_option('-v', '--verbose', default=False, action='store_true')
+parser.add_option('-V', '--Verbose', default=False, action='store_true')
+
+parser.add_option('', '--colormap', default='OrRd', type='string')
+parser.add_option('', '--contour-color', default='w', type='string')
+
+parser.add_option('', '--log', default=False, action='store_true')
+
+parser.add_option('', '--figwidth', default=6, type='float')
+parser.add_option('', '--figheight', default=5, type='float')
+
+parser.add_option('-o', '--output-dir', default='.', type='string')
+parser.add_option('-t', '--tag', default='', type='string')
+
+### parameters for scaling relation
+
+parser.add_option('', '--c_bsn', default=1.0, type='float',
+    help='passed to BayesMapParams')
+parser.add_option('', '--g_bsn', default=1.0, type='float',
+    help='passed to BayesMapParams')
+parser.add_option('', '--c_bci', default=1.0, type='float',
+    help='passed to BayesMapParams')
+parser.add_option('', '--g_bci', default=1.0, type='float',
+    help='passed to BayesMapParams')
+
+parser.add_option('', '--f_tol', default=1e-10, type='float',
+    help='numerical precision used when converting lnBSN -> rho2')
+
+### distribution
+
+parser.add_option('', '--Ngrid', default=100, type='int', 
+    help='number of grid samples per side in the (lnBSN, lnBCI) grid')
+parser.add_option('', '--Nsamp', default=100, type='int',
+    help='number of "samples" to draw from distribution of (rho2Ao, rho2Bo)')
+
+parser.add_option('', '--distrib', default='uniform', type='string',
+    help='the type of distribution used to sample (rho2Ao, rho2Bo). Must be one of : %s'%(', '.join(utils.known)))
+
+parser.add_option('', '--min-rho2', default=5, type='float',
+    help='mimimum rho2 used to determine grid')
+parser.add_option('', '--max-rho2', default=50, type='float',
+    help='maximum rho2 used to determine grid')
+
+opts, args = parser.parse_args()
+
+if opts.tag:
+    opts.tag = "_"+opts.tag
+
+if not os.path.exists(opts.output_dir):
+    os.makedirs(opts.output_dir)
+
+opts.verbose = opts.verbose or opts.Verbose
+
+### set up kwargs for utils.sample_rhoA2orhoB2o
+kwargs = dict((key,float(value)) for key, value in [arg.split(',') for arg in args])
+
+#-------------------------------------------------
+
+if opts.verbose:
+    print( "setting up sample grid" )
+
+### set up scaling relation
+params = utils.BayesMapParams(c_bsn=opts.c_bsn, g_bsn=opts.g_bsn, c_bci=opts.c_bci, g_bci=opts.g_bci)
+
+### determine grid
+min_rho2, min_eta2 = utils.rhoA2rhoB2_to_rho2eta2( opts.min_rho2, opts.min_rho2 )
+max_rho2, max_eta2 = utils.rhoA2rhoB2_to_rho2eta2( opts.max_rho2, opts.max_rho2 )
+
+min_lnBSN = utils.rho2_to_lnBSN( min_rho2, params )
+max_lnBSN = utils.rho2_to_lnBSN( max_rho2, params )
+
+min_lnBCI = utils.eta2_to_lnBCI( min_eta2, params )
+max_lnBCI = utils.eta2_to_lnBCI( max_eta2, params )
+
+lnBSN, lnBCI = np.meshgrid( np.linspace(min_lnBSN, max_lnBSN, opts.Ngrid), np.linspace(min_lnBCI, max_lnBCI, opts.Ngrid) )
+lnBSN = lnBSN.flatten()
+lnBCI = lnBCI.flatten()
+
+lnProb = -np.infty*np.empty(opts.Ngrid**2, dtype=float)
+
+#------------------------
+
+if opts.verbose:
+    print( "sampling from --distrib=%s"%opts.distrib )
+
+samples = utils.sample_rhoA2orhoB2o( opts.Nsamp, distrib=opts.distrib, **kwargs )
+
+for ind, (rhoA2o, rhoB2o) in enumerate(zip(*samples)):
+    if opts.Verbose:
+        print( "  %d / %d"%(ind+1, opts.Nsamp) )
+        print( "    rhoA2o : %.3e"%rhoA2o )
+        print( "    rhoB2o : %.3e"%rhoB2o )
+
+    ### compute the probability along the grid and add it to the existing distribution
+    dprob = utils.lnProb_lnBSNlnBCI_given_rhoA2orhoB2o(
+        lnBSN,
+        lnBCI,
+        rhoA2o*np.ones_like(lnBSN, dtype=float),
+        rhoB2o*np.ones_like(lnBSN, dtype=float),
+        params,
+        f_tol=opts.f_tol,
+    )
+    dprob[dprob!=dprob] = -np.infty ### get rid of any nan's
+
+    lnProb = utils.sumLogs(np.array([lnProb, dprob]), axis=0)
+
+lnProb = lnProb.reshape((opts.Ngrid,opts.Ngrid)) ### reshape to a raster of pixels
+
+#------------------------
+
+if opts.verbose:
+    print( "plotting lnProb(lnBSN, lnBCI)" )
+
+fig = plt.figure(figsize=(opts.figwidth, opts.figheight))
+ax = fig.gca()
+
+extent = [min_lnBSN, max_lnBSN, min_lnBCI, max_lnBCI]
+
+imag = ax.imshow(
+    lnProb, 
+    interpolation='bilinear', 
+    origin='lower', 
+    extent=extent, 
+    aspect='auto', 
+    cmap=opts.colormap,
+)
+contours = ax.contour(
+    lnProb, 
+    interpoloation='bilinear', 
+    origin='lower', 
+    extent=extent, 
+    colors=opts.contour_color,
+)
+
+colorbar = plt.colorbar(imag, orientation='vertical')
+
+ax.set_xlabel('$\ln B^S_N$')
+ax.set_ylabel('$\ln B^C_I$')
+
+colorbar.set_label('$\ln\, p(\ln B^S_N,\ln B^C_I)$')
+
+figname = "%s/distrib-%s%s.png"%(opts.output_dir, opts.distrib, opts.tag)
+if opts.verbose:
+    print( "    saving : %s"%figname )
+fig.savefig( figname )
+plt.close(fig)
