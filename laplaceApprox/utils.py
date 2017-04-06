@@ -16,7 +16,9 @@ def sumLogs( arrayLike, axis=0 ):
     return ln(sum(np.exp(arrayLike))) to high accuracy
     '''
     maxVal = np.max(arrayLike, axis=axis)
-    return maxVal + np.log(np.sum(np.exp(np.array(arrayLike)-maxVal), axis=axis))
+    ans = maxVal + np.log(np.sum(np.exp(np.array(arrayLike)-maxVal), axis=axis))
+    ans[maxVal==-np.infty] = -np.infty ### do this to avoid nan's from "np.infty-np.infty"
+    return ans 
 
 #-------------------------------------------------
 
@@ -214,6 +216,15 @@ def lnProb_lnBCI_given_rhoA2orhoB2o( lnBCI, rhoA2o, rhoB2o, params ):
 
 #--- define marginalization routines
 
+'''
+Define marignalization routines
+    - marginalize over a model distribution of rhoA2o, rhoB2o
+        - direct estimation of the integral 
+            - users probably want to just do this themselves and define their own step size, etc
+        - importance sampling 
+            - supported through sample_rhoA2orhoB2o
+'''
+
 known = {
     'uniform' : [
         'min_rhoA2o', 
@@ -225,6 +236,12 @@ known = {
         'min_rho2o',
         'max_rho2o',
         'eta2oOVERrho2o',
+    ],
+    'isotropic' : [
+    ],
+    'malmquist' : [
+    ],
+    'background' : [
     ],
 }
 
@@ -250,16 +267,24 @@ def sample_rhoA2orhoB2o( Nsamp, distrib='uniform', **kwargs ):
         eta2o = kwargs['eta2oOVERrho2o']*rho2o
         return rho2eta2_to_rhoA2rhoB2( rho2o, eta2o )
 
+    elif distrib=="isotropic":
+        raise NotImplementedError
+
+    elif distrib=="malmquist":
+        raise NotImplementedError, 'like isotropic, but includes cuts that mimic what detection pipelines do'
+
+    elif distrib=="background":
+        raise NotImplementedError, "a mixture of a chi2 (from Gaussian noise) and a pareto distribution (with some lower bound to make it normalizable)"
+
     else:
         raise ValueError, 'no sampling algorithm defined for distrib=%s. Please choose from : %s'%(distrib, ', '.join(known.keys()))
+
+#-------------------------------------------------
 
 '''
 Define marignalization routines
     - marginalize over sampling errors
         - direct estimation of the integral
+        - importance sampling
         - spectral evaluation of the convolution
-        - importance sampling
-    - marginalize over a model distribution of rhoA2o, rhoB2o
-        - direct estimation of the integral
-        - importance sampling
 '''
