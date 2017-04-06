@@ -148,7 +148,7 @@ if opts.everything or opts.lnP_rhoA2rhoB2 or opts.lnP_rho2eta2 or opts.lnP_lnBSN
 
             X, Y = np.meshgrid( np.linspace(xmin, xmax, opts.Ngrid), np.linspace(ymin, ymax, opts.Ngrid) )
             lnP = utils.lnProb_rhoA2rhoB2_given_rhoA2orhoB2o(X.flatten(), Y.flatten(), ones*xo, ones*yo).reshape(opts.Ngrid, opts.Ngrid)
-            contours = ax.contour(lnP, interpoloation='bilineary', origin='lower', extent=extent, colors=opts.contour_color)
+            contours = ax.contour(lnP, interpoloation='bilinear', origin='lower', extent=extent, colors=opts.contour_color)
             if not opts.log:
                 lnP = np.exp(lnP)
 
