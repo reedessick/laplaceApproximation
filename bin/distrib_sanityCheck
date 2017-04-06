@@ -28,6 +28,8 @@ parser.add_option('-V', '--Verbose', default=False, action='store_true')
 
 parser.add_option('', '--colormap', default='OrRd', type='string')
 parser.add_option('', '--contour-color', default='w', type='string')
+parser.add_option('', '--overlay-color', default='k', type='string',
+    help='the color used to plot the expected scalings')
 
 parser.add_option('', '--log', default=False, action='store_true')
 
@@ -122,10 +124,14 @@ for ind, (rhoA2o, rhoB2o) in enumerate(zip(*samples)):
         f_tol=opts.f_tol,
     )
     dprob[dprob!=dprob] = -np.infty ### get rid of any nan's
-
+                                    ### FIXME we may want to be smarter about this and 
+                                    ### prevent nans from showing up in the first place
     lnProb = utils.sumLogs(np.array([lnProb, dprob]), axis=0)
 
-lnProb = lnProb.reshape((opts.Ngrid,opts.Ngrid)) - np.log(opts.Nsamp) ### reshape to a raster of pixels
+lnProb -= np.log(opts.Nsamp) ### normalize
+lnProb = lnProb.reshape((opts.Ngrid,opts.Ngrid)) ### reshape to a raster of pixels
+
+print( "WARNING: need to write posterior to disk in a recoverable way" )
 
 #------------------------
 
@@ -136,6 +142,13 @@ fig = plt.figure(figsize=(opts.figwidth, opts.figheight))
 ax = fig.gca()
 
 extent = [np.min(lnBSN), np.max(lnBSN), np.min(lnBCI), np.max(lnBCI)]
+
+if not opts.log:
+    lnProb = np.exp(lnProb) ### convert out of log for plotting
+    colorbar_label = '$p(\ln B^S_N,\ln B^C_I)$'
+
+else:
+    colorbar_label = '$\ln\, p(\ln B^S_N,\ln B^C_I)$'
 
 imag = ax.imshow(
     lnProb, 
@@ -158,7 +171,10 @@ colorbar = plt.colorbar(imag, orientation='vertical')
 ax.set_xlabel('$\ln B^S_N$')
 ax.set_ylabel('$\ln B^C_I$')
 
-colorbar.set_label('$\ln\, p(\ln B^S_N,\ln B^C_I)$')
+colorbar.set_label(colorbar_label)
+
+print( "WARNING: need to overlay expected scaling with rho2 at various values of eta2OVERrho2. Use --overlay-color" )
+print( "WARNING: need to include the effects of sampling errors" )
 
 figname = "%s/distrib-%s%s.png"%(opts.output_dir, opts.distrib, opts.tag)
 if opts.verbose:
