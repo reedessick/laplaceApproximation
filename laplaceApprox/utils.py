@@ -25,9 +25,14 @@ def sumLogs( arrayLike, axis=0 ):
 class BayesMapParams(object):
     '''
     a special-built storate structure for parameters defining our expected scalings of BayesFactors
+
+    NOTE: 
+        this formalism (in paricular, the definition of eta2) doesn't really make sense unless abs(c_bsn)==abs(c_bci)
+        we also expect c_bsn < 0 and c_bci > 0
+    however, we do not check for this explicitly or in any way enforce it. The default values do obey this, though.
     '''
 
-    def __init__(self, c_bsn=1.0, g_bsn=1.0, c_bci=1.0, g_bci=1.0):
+    def __init__(self, c_bsn=-1.0, g_bsn=1.0, c_bci=1.0, g_bci=1.0):
         self.c_bsn = c_bsn
         self.g_bsn = g_bsn
         self.c_bci = c_bci
@@ -281,10 +286,110 @@ def sample_rhoA2orhoB2o( Nsamp, distrib='uniform', **kwargs ):
 
 #-------------------------------------------------
 
+def tukey(N, alpha):
+        """
+        generate a tukey window
+        The Tukey window, also known as the tapered cosine window, can be regarded as a cosine lobe of width \alpha * N / 2
+                that is convolved with a rectangle window of width (1 - \alpha / 2). At \alpha = 1 it becomes rectangular, and
+                at \alpha = 0 it becomes a Hann window. 
+        """
+        # Special cases
+        if alpha <= 0:
+                return np.ones(N) #rectangular window
+        elif alpha >= 1:
+                return np.hanning(N)
+
+        # Normal case
+        x = np.linspace(0, 1, N)
+        w = np.ones(x.shape)
+
+        # first condition 0 <= x < alpha/2
+        first_condition = x<alpha/2
+        w[first_condition] = 0.5 * (1 + np.cos(2*np.pi/alpha * (x[first_condition] - alpha/2) ))
+
+        # second condition already taken care of
+
+        # third condition 1 - alpha / 2 <= x <= 1
+        third_condition = x>=(1 - alpha/2)
+        w[third_condition] = 0.5 * (1 + np.cos(2*np.pi/alpha * (x[third_condition] - 1 + alpha/2)))
+
+        return w
+
+def sigma_lnBSN( rho2o, params, frac=0.01 ):
+    '''
+    we assume the sampling error scales as a constant fraction of what was injected
+    '''
+    return frac*rho2_to_lnBSN( rho2o, params )
+
+def sigma_singles( rhoA2o, rhoB2o, params, frac=0.01 ):
+    '''
+    computes the sampling error from the combination of the singles runs
+    delegates to sigma_lnBSN
+    '''
+    return (sigma_lnBSN(rhoA2o, params, frac=frac)**2 + sigma_lnBSN(rhoB2o, params, frac=frac)**2)**0.5
+
+def lnProb_samplingError( delta, sigma ):
+    '''
+    just the Gaussian distribution
+    '''
+    return -0.5*(delta/sigma)**2 - 0.5*np.log(2*np.pi*sigma**2)
+
+def lnFFTProb_samplingError( atled, sigma ):
+    '''
+    the Fourier transform of the sampling error distrition (a Gaussian in the Fourier conjugate variable)
+    NOTE: sigma is the "real-space" width which would be passed to lnProb_samplingError
+    '''
+    return -2*(np.pi*sigma*atled)**2
+
+def convolve_samplingErrors( lnBSN, lnBCI, lnProb, rho2Ao, rho2Bo, params, frac=0.01, tukey_alpha=0.1 ):
+    '''
+    marginalize over sampling errors numerically via spectral convolution
+    we use a Tukey window for both lnBSN and lnBCI separately
+
+    NOTE: 
+        this assumes that lnBSN, lnBCI, lnProb are all numpy.ndarray objects with the same shape and the structure expected for something like matplotlib.pyplot.contours
+        rho2Ao, rho2Bo, params, frac are used to determine the expected sampling errors
+        tukey_alpha is used to constructe a windowing function used in the FFT. We do not use a windowing function in the iFFT because it probably isn't necessary (the convolution kernels should kill most of that stuff)
+    '''
+    ### FFT lnProb    
+    max_lnProb = np.max(lnProb) ### do everything releative to the maximum value to improve numerical precision
+    lnProb -= max_lnProb
+
+    # windowing function
+    size_lnBSN, size_lnBCI = lnProb.shape ### get the dimensionality of lnProb
+    win = np.outer( tukey(size_lnBSN, tukey_alpha), tukey(size_lnBCI, tukey_alpha) )
+
+    # determine conjugate variable values corresponding to FFT array
+    frq_lnBSN, frq_lnBCI = np.meshgrid( np.fft.fftfreq(size_lnBSN), np.fft.fftfreq(size_lnBCI) )
+
+    # actual FFT
+    fftProb = np.fft.fft2( np.exp(lnProb)*win )
+    # multiply by the phases associated with non-central lnBSN, lnBCI
+    # this is required because the DFT assumes the array starts at 0
+    fftProb *= np.exp(-2j*np.pi*(frq_lnBSN*np.min(lnBSN) + frq_lnBCI*np.min(lnBCI)))
+
+    ### multiply by Fourier conjugates of the sampling error distributions
+    lnFFT_lnBSNerr = lnFFTProb_samplingError(frq_lnBSN+frq_lnBCI, sigma_lnBSN(rho2Arho2B_to_rho2(rho2Ao, rho2Bo), params, frac=frac))
+    max_lnFFT_lnBSNerr = np.max(lnFFT_lnBSNerr) ### remove this for numerical precision
+    lnFFT_lnBSNerr -= max_lnFFT_lnBSNerr
+
+    lnFFT_lnBCIerr = lnFFTProb_samplingError(frq_lnBCI, sigma_singles(rho2Ao, rho2Bo, params, frac=frac))
+    max_lnFFT_lnBCIerr = np.max(lnFFT_lnBCIerr) ### remove for numerical precision
+    lnFFT_lnBCIerr -= lnFFT_lnBCIerr
+
+    # multiply by fourier transform of distributions
+    fftProb *= np.exp(lnFFT_lnBSNerr + lnFFT_lnBCIerr)
+
+    ### iFFT the result
+    # FIXME do I need to re-apply a tukey window here? I don't think so...
+    result = np.fft.ifft2( fftProb )
+
+    ### take log and add back the factors that I kept out for precision
+    return np.ln(result) + max_lnProb + max_lnFFT_lnBSNerr + max_lnFFT_lnBCIerr
+
 '''
 Define marignalization routines
     - marginalize over sampling errors
         - direct estimation of the integral
         - importance sampling
-        - spectral evaluation of the convolution
 '''
