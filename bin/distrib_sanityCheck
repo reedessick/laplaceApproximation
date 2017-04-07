@@ -128,6 +128,12 @@ for ind, (rhoA2o, rhoB2o) in enumerate(zip(*samples)):
                                     ### prevent nans from showing up in the first place
     lnProb = utils.sumLogs(np.array([lnProb, dprob]), axis=0)
 
+    print( """\
+WARNING: we want to marginalize over samping errors on an event-by-event basis because we expect the uncertainty to depend on rhoA2o, rhoB2o. 
+We also want to store both the "raw" lnProb and the convolved lnProb so we can plot them separately.
+This should allow us to naturally see how the sampling errors "blur" the distributions""" 
+    )
+
 lnProb -= np.log(opts.Nsamp) ### normalize
 lnProb = lnProb.reshape((opts.Ngrid,opts.Ngrid)) ### reshape to a raster of pixels
 
