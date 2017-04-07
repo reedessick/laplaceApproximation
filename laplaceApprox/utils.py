@@ -17,7 +17,8 @@ def sumLogs( arrayLike, axis=0 ):
     '''
     maxVal = np.max(arrayLike, axis=axis)
     ans = maxVal + np.log(np.sum(np.exp(np.array(arrayLike)-maxVal), axis=axis))
-    ans[maxVal==-np.infty] = -np.infty ### do this to avoid nan's from "np.infty-np.infty"
+    if len(np.shape(arrayLike)) > 1:
+        ans[maxVal==-np.infty] = -np.infty ### do this to avoid nan's from "np.infty-np.infty"
     return ans 
 
 #-------------------------------------------------
@@ -341,7 +342,7 @@ def lnFFTProb_samplingError( atled, sigma ):
     '''
     return -2*(np.pi*sigma*atled)**2
 
-def convolve_samplingErrors( lnBSN, lnBCI, lnProb, rho2Ao, rho2Bo, params, frac=0.01, tukey_alpha=0.1 ):
+def convolve_samplingErrors( lnBSN, lnBCI, lnProb, rhoA2o, rhoB2o, params, frac=0.01, tukey_alpha=0.1 ):
     '''
     marginalize over sampling errors numerically via spectral convolution
     we use a Tukey window for both lnBSN and lnBCI separately
@@ -360,32 +361,36 @@ def convolve_samplingErrors( lnBSN, lnBCI, lnProb, rho2Ao, rho2Bo, params, frac=
     win = np.outer( tukey(size_lnBSN, tukey_alpha), tukey(size_lnBCI, tukey_alpha) )
 
     # determine conjugate variable values corresponding to FFT array
-    frq_lnBSN, frq_lnBCI = np.meshgrid( np.fft.fftfreq(size_lnBSN), np.fft.fftfreq(size_lnBCI) )
+    frq_lnBSN, frq_lnBCI = np.meshgrid( 
+        np.fft.fftfreq(size_lnBSN, d=lnBSN[0,1]-lnBSN[0,0]), 
+        np.fft.fftfreq(size_lnBCI, d=lnBCI[1,0]-lnBCI[0,0]),
+    )
 
     # actual FFT
-    fftProb = np.fft.fft2( np.exp(lnProb)*win )
-    # multiply by the phases associated with non-central lnBSN, lnBCI
-    # this is required because the DFT assumes the array starts at 0
-    fftProb *= np.exp(-2j*np.pi*(frq_lnBSN*np.min(lnBSN) + frq_lnBCI*np.min(lnBCI)))
+    fftProb = np.fft.fft2( np.exp(lnProb)*win )[:len(frq_lnBSN)]
 
     ### multiply by Fourier conjugates of the sampling error distributions
-    lnFFT_lnBSNerr = lnFFTProb_samplingError(frq_lnBSN+frq_lnBCI, sigma_lnBSN(rho2Arho2B_to_rho2(rho2Ao, rho2Bo), params, frac=frac))
+    lnFFT_lnBSNerr = lnFFTProb_samplingError(frq_lnBSN+frq_lnBCI, sigma_lnBSN(rhoA2rhoB2_to_rho2eta2(rhoA2o, rhoB2o)[0], params, frac=frac))
     max_lnFFT_lnBSNerr = np.max(lnFFT_lnBSNerr) ### remove this for numerical precision
     lnFFT_lnBSNerr -= max_lnFFT_lnBSNerr
 
-    lnFFT_lnBCIerr = lnFFTProb_samplingError(frq_lnBCI, sigma_singles(rho2Ao, rho2Bo, params, frac=frac))
+    lnFFT_lnBCIerr = lnFFTProb_samplingError(frq_lnBCI, sigma_singles(rhoA2o, rhoB2o, params, frac=frac))
     max_lnFFT_lnBCIerr = np.max(lnFFT_lnBCIerr) ### remove for numerical precision
-    lnFFT_lnBCIerr -= lnFFT_lnBCIerr
+    lnFFT_lnBCIerr -= max_lnFFT_lnBCIerr
 
     # multiply by fourier transform of distributions
     fftProb *= np.exp(lnFFT_lnBSNerr + lnFFT_lnBCIerr)
 
     ### iFFT the result
-    # FIXME do I need to re-apply a tukey window here? I don't think so...
-    result = np.fft.ifft2( fftProb )
+    result = np.fft.ifft2( np.fft.ifftshift(np.fft.fftshift(fftProb)*win) ) ### tukey this again to kill aliasing
+
+    ### FIXME it seems like this is returning complex values with large imaginary components
+    # this is likely due to the lnFFT_lnBSNerr term, which appears to break
+    #    F(-x, y) = conj(F(x, y))
+    # and therefore causes iFFT to give complex values...
 
     ### take log and add back the factors that I kept out for precision
-    return np.ln(result) + max_lnProb + max_lnFFT_lnBSNerr + max_lnFFT_lnBCIerr
+    return np.log(result) + max_lnProb + max_lnFFT_lnBSNerr + max_lnFFT_lnBCIerr
 
 '''
 Define marignalization routines
