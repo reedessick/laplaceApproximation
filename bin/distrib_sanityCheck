@@ -33,6 +33,9 @@ parser.add_option('', '--overlay-color', default='k', type='string',
 
 parser.add_option('', '--log', default=False, action='store_true')
 
+parser.add_option('', '--force-normalization', default=False, action='store_true',
+    help='force the distribution to be normalized over the plotting range alone')
+
 parser.add_option('', '--figwidth', default=6, type='float')
 parser.add_option('', '--figheight', default=5, type='float')
 
@@ -52,6 +55,14 @@ parser.add_option('', '--g_bci', default=1.0, type='float',
 
 parser.add_option('', '--f_tol', default=1e-10, type='float',
     help='numerical precision used when converting lnBSN -> rho2')
+
+### marginalization
+
+parser.add_option('', '--frac', default=0.01, type='float',
+    help='used to determine how the sampling uncertainty scales with the injected value')
+parser.add_option('', '--tukey-alpha', default=0.1, type='float',
+    help='the Tukey window\'s alpha paramter used when computing the FFT \
+to spectrallyconvolve lnProb with sampling errors')
 
 ### distribution
 
@@ -95,11 +106,12 @@ if opts.verbose:
 params = utils.BayesMapParams(c_bsn=opts.c_bsn, g_bsn=opts.g_bsn, c_bci=opts.c_bci, g_bci=opts.g_bci)
 
 ### determine grid
-lnBSN, lnBCI = np.meshgrid( np.linspace(opts.min_lnBSN, opts.max_lnBSN, opts.Ngrid), np.linspace(opts.min_lnBCI, opts.max_lnBCI, opts.Ngrid) )
-lnBSN = lnBSN.flatten()
-lnBCI = lnBCI.flatten()
+lnbsn, lnbci = np.meshgrid( np.linspace(opts.min_lnBSN, opts.max_lnBSN, opts.Ngrid), np.linspace(opts.min_lnBCI, opts.max_lnBCI, opts.Ngrid) )
+lnBSN = lnbsn.flatten()
+lnBCI = lnbci.flatten()
 
-lnProb = -np.infty*np.empty(opts.Ngrid**2, dtype=float)
+lnProb = -np.infty*np.ones(opts.Ngrid**2, dtype=float)
+marg_lnProb = -np.infty*np.ones(opts.Ngrid**2, dtype=float)
 
 #------------------------
 
@@ -113,6 +125,7 @@ for ind, (rhoA2o, rhoB2o) in enumerate(zip(*samples)):
         print( "  %d / %d"%(ind+1, opts.Nsamp) )
         print( "    rhoA2o : %.3e"%rhoA2o )
         print( "    rhoB2o : %.3e"%rhoB2o )
+        print( "    computing dprob" )
 
     ### compute the probability along the grid and add it to the existing distribution
     dprob = utils.lnProb_lnBSNlnBCI_given_rhoA2orhoB2o(
@@ -126,16 +139,36 @@ for ind, (rhoA2o, rhoB2o) in enumerate(zip(*samples)):
     dprob[dprob!=dprob] = -np.infty ### get rid of any nan's
                                     ### FIXME we may want to be smarter about this and 
                                     ### prevent nans from showing up in the first place
+
+    # add this to un-marginalized posterior
     lnProb = utils.sumLogs(np.array([lnProb, dprob]), axis=0)
 
-    print( """\
-WARNING: we want to marginalize over samping errors on an event-by-event basis because we expect the uncertainty to depend on rhoA2o, rhoB2o. 
-We also want to store both the "raw" lnProb and the convolved lnProb so we can plot them separately.
-This should allow us to naturally see how the sampling errors "blur" the distributions""" 
-    )
+    # marginalize over sampling errors
+    if opts.Verbose:
+        print( "    marginalizing over sampling errors" )
+    dprob = utils.convolve_samplingErrors(
+        lnbsn, ### need to use these because we want 2D shape
+        lnbci, 
+        dprob.reshape((opts.Ngrid,opts.Ngrid)), ### need to reshape to apply 2D FFT 
+        rhoA2o, 
+        rhoB2o, 
+        params, 
+        frac=opts.frac, 
+        tukey_alpha=opts.tukey_alpha,
+    ).flatten() ### flatten this to get the correct shape
+    # add to marginalized posterior
+    marg_lnProb = utils.sumLogs(np.array([marg_lnProb, dprob]), axis=0)
 
-lnProb -= np.log(opts.Nsamp) ### normalize
+if opts.force_normalization:
+    lnProb -= utils.sumLogs(lnProb)
+    marg_lnProb -= utils.sumLogs(marg_lnProb)
+
+else:
+    lnProb -= np.log(opts.Nsamp) ### normalize
+    marg_lnProb -= np.log(opts.Nsamp)
+
 lnProb = lnProb.reshape((opts.Ngrid,opts.Ngrid)) ### reshape to a raster of pixels
+marg_lnProb = marg_lnProb.reshape((opts.Ngrid,opts.Ngrid))
 
 print( "WARNING: need to write posterior to disk in a recoverable way" )
 
@@ -144,46 +177,51 @@ print( "WARNING: need to write posterior to disk in a recoverable way" )
 if opts.verbose:
     print( "plotting lnProb(lnBSN, lnBCI)" )
 
-fig = plt.figure(figsize=(opts.figwidth, opts.figheight))
-ax = fig.gca()
-
 extent = [np.min(lnBSN), np.max(lnBSN), np.min(lnBCI), np.max(lnBCI)]
 
-if not opts.log:
-    lnProb = np.exp(lnProb) ### convert out of log for plotting
-    colorbar_label = '$p(\ln B^S_N,\ln B^C_I)$'
+for z, label, tag, in [(lnProb,      'p(\ln B^S_N,\ln B^C_I|\Delta=\Delta^\prime=0)', 'mode'), \
+                       (marg_lnProb, 'p(\ln B^S_N,\ln B^C_I)',                        'marg')]:
+    fig = plt.figure(figsize=(opts.figwidth, opts.figheight))
+    ax = fig.gca()
 
-else:
-    colorbar_label = '$\ln\, p(\ln B^S_N,\ln B^C_I)$'
+    if not opts.log:
+        z = np.exp(z) ### convert out of log for plotting
+        colorbar_label = '$'+label+'$'
 
-imag = ax.imshow(
-    lnProb, 
-    interpolation='bilinear', 
-    origin='lower', 
-    extent=extent, 
-    aspect='auto', 
-    cmap=opts.colormap,
-)
-contours = ax.contour(
-    lnProb, 
-    interpoloation='bilinear', 
-    origin='lower', 
-    extent=extent, 
-    colors=opts.contour_color,
-)
+    else:
+        colorbar_label = '$\ln\,'+label+'$'
 
-colorbar = plt.colorbar(imag, orientation='vertical')
+    z = z.real ### this should not be necessary...
 
-ax.set_xlabel('$\ln B^S_N$')
-ax.set_ylabel('$\ln B^C_I$')
+    imag = ax.imshow(
+        z, 
+        interpolation='bilinear', 
+        origin='lower', 
+        extent=extent, 
+        aspect='auto', 
+        cmap=opts.colormap,
+    )
+    contours = ax.contour(
+        z, 
+        interpoloation='bilinear', 
+        origin='lower', 
+        extent=extent, 
+        colors=opts.contour_color,
+    )
 
-colorbar.set_label(colorbar_label)
+    colorbar = plt.colorbar(imag, orientation='vertical')
 
-print( "WARNING: need to overlay expected scaling with rho2 at various values of eta2OVERrho2. Use --overlay-color" )
-print( "WARNING: need to include the effects of sampling errors" )
+    ax.set_xlabel('$\ln B^S_N$')
+    ax.set_ylabel('$\ln B^C_I$')
 
-figname = "%s/distrib-%s%s.png"%(opts.output_dir, opts.distrib, opts.tag)
-if opts.verbose:
-    print( "    saving : %s"%figname )
-fig.savefig( figname )
-plt.close(fig)
+    colorbar.set_label(colorbar_label)
+
+    print( "WARNING: need to overlay expected scaling with rho2 at various values of eta2OVERrho2. Use --overlay-color" )
+
+    figname = "%s/distrib_%s-%s%s.png"%(opts.output_dir, tag, opts.distrib, opts.tag)
+    if opts.verbose:
+        print( "    saving : %s"%figname )
+    fig.savefig( figname )
+    plt.close(fig)
+
+
