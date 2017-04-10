@@ -6,6 +6,7 @@ __author__ = "Reed Essick (reed.essick@ligo.org)"
 import numpy as np
 import mpmath ### used for high-precision computation of modified bessel function
 from scipy.optimize import newton ### contains nonlinear root finders
+from scipy.special import erfinv ### used to space direct integration points
 
 #-------------------------------------------------
 
@@ -15,18 +16,21 @@ def sumLogs( arrayLike, axis=0 ):
     '''
     return ln(sum(np.exp(arrayLike))) to high accuracy
     '''
-    ### transpose to ensure axis=0
-    ### this just makes all the broadcasting stuff work better below
-    if axis!=0:
+    shape = np.shape(arrayLike)
+    if len(shape)==1:
+        maxVal = np.max(arrayLike)
+        return maxVal + np.log(np.sum(np.exp(np.array(arrayLike)-maxVal))) if maxVal>-np.infty else -np.infty
+
+    elif axis!=0:
+        ### transpose to ensure axis=0
+        ### this just makes all the broadcasting stuff work better below
         axes = range(len(np.shape(arrayLike)))
         axes.insert( 0, axes.pop(axis)) ### there might be a more graceful way to do this...
         arrayLike = np.transpose(arrayLike, axes=axes)    
-
+   
     maxVal = np.max(arrayLike, axis=0)
     ans = maxVal + np.log(np.sum(np.exp(np.array(arrayLike)-maxVal), axis=0))
-
-    if len(np.shape(arrayLike)) > 1:
-        ans[maxVal==-np.infty] = -np.infty ### do this to avoid nan's from "np.infty-np.infty"
+    ans[maxVal==-np.infty] = -np.infty ### do this to avoid nan's from "np.infty-np.infty"
 
     return ans 
 
@@ -366,10 +370,34 @@ def lnFFTProb_samplingError( atled, sigma ):
     '''
     return -2*(np.pi*sigma*atled)**2
 
-def slow_convolve_samplingErrors( lnBSN, lnBCI, rhoA2o, rhoB2o, params, frac=0.01, tukey_alpha=0.1, f_tol=1e-10 ):
+def fuckU_fft2( twodee ):
     '''
-    NOT IMPLEMENTED
+    take fft2 by hand by iterating over one of the array's indecies
+    expected to be slow, but may allow me to get better numerical percision by playing tricks with the intermediate data products
+    '''
+    lenx, leny = twodee.shape
+    ans = np.empty((lenx, leny), dtype=complex)
+    for ind in xrange(lenx):
+        ans[ind,:] = np.fft.fft( twodee[ind,:] )
+    for ind in xrange(leny):
+        ans[:,ind] = np.fft.fft( ans[:,ind] )
+    return ans
 
+def fuckU_ifft2( twodee ):
+    '''
+    take ifft2 by hand by iterating over array's indecies in the opposite order as fuckU_fft2
+    expected to be slow, but may allow me to get better numerical precision by playing tricks with the intermediate data products
+    '''
+    lenx, leny = twodee.shape
+    ans = np.empty((lenx, leny), dtype=complex)
+    for ind in xrange(leny):
+        ans[:,ind] = np.fft.ifft( twodee[:,ind] )
+    for ind in xrange(lenx):
+        ans[ind,:] = np.fft.ifft( ans[ind,:] )
+    return ans
+
+def fuckU_convolve_samplingErrors( lnBSN, lnBCI, rhoA2o, rhoB2o, params, frac=0.01, tukey_alpha=0.1, f_tol=1e-10 ):
+    '''
     we should take the fft and ifft of only one dimension at a time and do this by hand.
     this should allow us to determine whether fft2, ifft2 are broken or the mistake is mine
 
@@ -410,7 +438,7 @@ def slow_convolve_samplingErrors( lnBSN, lnBCI, rhoA2o, rhoB2o, params, frac=0.0
     )
 
     # actual FFT
-    raise NotImplementedError, 'need to handle fft over multiple dimensions by hand'
+    fftProb = fuckU_fft2( np.exp(lnProb)*win )
 
     ### multiply by Fourier conjugates of the sampling error distributions
     lnFFT_lnBSNerr = lnFFTProb_samplingError(frq_lnBSN+frq_lnBCI, sigma_lnBSN(rhoA2rhoB2_to_rho2eta2(rhoA2o, rhoB2o)[0], params, frac=frac))
@@ -425,7 +453,7 @@ def slow_convolve_samplingErrors( lnBSN, lnBCI, rhoA2o, rhoB2o, params, frac=0.0
     fftProb *= np.exp(lnFFT_lnBSNerr + lnFFT_lnBCIerr)
 
     ### iFFT the result
-    raise NotImplementedError, 'need to handle ifft over multiple dimensions by hand'
+    result = fuckU_ifft2( np.fft.ifftshift(np.fft.fftshift(fftProb)*win) ) ### tukey this again to kill aliasing
 
     ### take log and add back the factors that I kept out for precision
     return np.log(result) + max_lnProb + max_lnFFT_lnBSNerr + max_lnFFT_lnBCIerr
@@ -466,7 +494,8 @@ def convolve_samplingErrors( lnBSN, lnBCI, rhoA2o, rhoB2o, params, frac=0.01, tu
     )
 
     # actual FFT
-    fftProb = np.fft.fft2( np.exp(lnProb)*win )[:len(frq_lnBSN)]
+    fftProb = np.fft.fft2( np.exp(lnProb)*win )
+#    fftProb = np.fft.fft2( np.exp(lnProb) ) ### windowing also appears to affect whether the final answer is real... what?
 
     ### multiply by Fourier conjugates of the sampling error distributions
     lnFFT_lnBSNerr = lnFFTProb_samplingError(frq_lnBSN+frq_lnBCI, sigma_lnBSN(rhoA2rhoB2_to_rho2eta2(rhoA2o, rhoB2o)[0], params, frac=frac))
@@ -478,15 +507,17 @@ def convolve_samplingErrors( lnBSN, lnBCI, rhoA2o, rhoB2o, params, frac=0.01, tu
     lnFFT_lnBCIerr -= max_lnFFT_lnBCIerr
 
     # multiply by fourier transform of distributions
-    fftProb *= np.exp(lnFFT_lnBSNerr + lnFFT_lnBCIerr)
+    ### FIXME it seems like this is returning complex values with large imaginary components
+    fftProb *= np.exp(lnFFT_lnBSNerr + lnFFT_lnBCIerr)  ### somehow, the lnFFT_lnBSNerr term messes up ifft2...
+#    fftProb *= np.exp(lnFFT_lnBCIerr)
 
     ### iFFT the result
-    result = np.fft.ifft2( np.fft.ifftshift(np.fft.fftshift(fftProb)*win) ) ### tukey this again to kill aliasing
+#    result = np.fft.ifft2( fftProb )
+    result = fuckU_ifft2( np.fft.ifftshift(np.fft.fftshift(fftProb)*win) ) ### tukey this again to kill aliasing
 
-    ### FIXME it seems like this is returning complex values with large imaginary components
-    # this is likely due to the lnFFT_lnBSNerr term, which appears to break
-    #    F(-x, y) = conj(F(x, y))
-    # and therefore causes iFFT to give complex values...
+#    truth = np.abs(result.real)>1e-15
+#    print result[truth]
+#    print result.imag[truth]/result.real[truth]
 
     ### take log and add back the factors that I kept out for precision
     return np.log(result) + max_lnProb + max_lnFFT_lnBSNerr + max_lnFFT_lnBCIerr
@@ -514,8 +545,89 @@ def importanceSample_samplingErrors( lnBSN, lnBCI, rhoA2o, rhoB2o, params, frac=
     rhoB2o *= np.ones(n, dtype=float)
     return sumLogs(lnProb_lnBSNlnBCI_given_rhoA2orhoB2o(lnBSN.flatten(), lnBCI.flatten(), rhoA2o, rhoB2o, params, f_tol=f_tol).reshape(N, Nsamp), axis=1) - np.log(Nsamp)
 
-def directIntegrate_sampleErrors( lnBSN, lnBCI, rhoA2o, rhoB2o, params, frac=0.01, f_tol=1e-10 ):
+def directIntegrate_samplingErrors( lnBSN, lnBCI, rhoA2o, rhoB2o, params, frac=0.01, f_tol=1e-10, Nint=10 ):
     '''
-    NOT IMPLEMENTED. Will almost certainly be slower than our other approaches, so perhaps we shouldn't bother...
+    we expect lnBSN, lnBCI to be 1D np.array objects
+
+    Nint is the number of points used to perform the numeric integration. Nint is used on half the plane, so each integral will acutally use 2*Nint-1 samples (due to repeated zero point)
+
+    NOTE: my integration strategy truncates the gaussian integral over sampling errors at the last points (+/- inf are dropped) so that I can handle the weighting by un-even sampling. This should be a small effect as long as Nint is reasonably large.
+    I do weight the integral by the prior weight accumulated during this approximate integration. This should help mitigate errors, but a large-ish Nint is still likely to be required.
+
+    WARNING: this could be made more memory efficient by restructuring some of the loops. For instance, if we're really only going to sum up the numeric marginalizations one point at a time in a nested loop, there's no reason to compute all of lnProb for all points we'll ever need at the beginning. We can just compute exactly what we need within that loop and go from there. Should prevent the need for really big arrays.
+    Of course, if I can figure out how to replace the nested loops with array manipulations, then everything should just be faster.
     '''
-    raise NotImplementedError, 'this will almost certainly be slow, so perhaps we should not bother?'
+    N = len(lnBSN)
+
+    ### set up the points used to evaluate the integrals
+    samples = erfinv(np.linspace(0,1,Nint+1))[:-1]
+    samples = np.concatenate([-samples[::-1][:-1], samples])
+    L = len(samples)
+    ### compute sampling error standard deviations
+    sigma1 = sigma_lnBSN(rhoA2rhoB2_to_rho2eta2(rhoA2o, rhoB2o)[0], params, frac=frac)
+    sigma2 = sigma_singles(rhoA2o, rhoB2o, params, frac=frac)
+
+    ### compute a grid of points for sampling errors
+    delta1, delta2 = np.meshgrid(
+        samples*sigma1, 
+        samples*sigma2,
+    )
+    delta1 = np.outer( np.ones(N, dtype=float), delta1.flatten() ).flatten()
+    delta2 = np.outer( np.ones(N, dtype=float), delta2.flatten() ).flatten()
+    M = L**2
+
+    ### now, compute probability for all points
+    lnProb = lnProb_lnBSNlnBCI_given_rhoA2orhoB2o(
+        np.outer(lnBSN, np.ones(M, dtype=float)).flatten() + delta1, 
+        np.outer(lnBCI, np.ones(M, dtype=float)).flatten() + delta1 + delta2, 
+        rhoA2o*np.ones(M*N, dtype=float), 
+        rhoB2o*np.ones(M*N, dtype=float), 
+        params, 
+        f_tol=f_tol,
+    )
+
+    ### weight by sampling errors 
+    sampErr1 = lnProb_samplingError( delta1, sigma1 )
+    sampErr2 = lnProb_samplingError( delta2, sigma2 )
+    lnProb += sampErr2 + sampErr2
+
+    ### sum to compute integral
+    lnProb = lnProb.reshape((N,L,L))
+
+    # go over bci integral first
+    answer = np.empty(N, dtype=float)
+    delta1 = delta1.reshape((N,L,L))
+    delta2 = delta2.reshape((N,L,L))
+    sampErr1 = sampErr1.reshape((N,L,L))
+    sampErr2 = sampErr2.reshape((N,L,L))
+    for i in xrange(N):
+        ans = np.empty(L, dtype=float)
+        for j in xrange(L):
+            weight = np.log(delta2[i,1:,j]-delta2[i,:-1,j]) ### weight by dDelta
+
+            # actual integral
+            wer = sumLogs(np.array([lnProb[i,:-1,j], lnProb[i,1:,j]]), axis=0) - np.log(2) ### average neighboring points
+            ans[j] = sumLogs(wer+weight)
+
+            # the prior weight
+            wer = sumLogs(np.array([sampErr2[i,:-1,j], sampErr2[i,1:,j]]), axis=0) - np.log(2)
+            ans[j] -= sumLogs(wer+weight)
+
+            try:
+                assert np.all(ans[j]==ans[j])
+            except AssertionError as e:
+                blah = sumLogs(np.array([lnProb[i,:-1,j], lnProb[i,1:,j]]), axis=0)
+                print blah
+                raise e
+
+        weight = np.log(delta1[i,0,1:]-delta1[i,0,:-1]) ### weight by dDelta
+
+        # the actual integral
+        ans = sumLogs(np.array([ans[:-1], ans[1:]]), axis=0) - np.log(2) ### average neighboring points
+        answer[i] = sumLogs(ans-weight)
+
+        # the prior weight
+        ans = sumLogs(np.array([sampErr1[i,0,1:], sampErr1[i,0,:-1]]), axis=0) - np.log(2) ### average neighboring points
+        answer[i] -= sumLogs(ans-weight)
+
+    return answer

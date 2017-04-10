@@ -71,6 +71,10 @@ parser.add_option('', '--Nimps', default=100, type='int',
     help='the number of samples used to estimate marginalization \
 over sampling errors via importance sampling')
 
+parser.add_option('', '--Nint', default=10, type='int',
+    help='the number of samples used to estimate marginalization \
+via direct integration. We will generate (2*Nint-1)**2 points.')
+
 ### distribution
 
 parser.add_option('', '--Ngrid', default=100, type='int', 
@@ -119,7 +123,9 @@ lnBCI = lnbci.flatten()
 
 lnProb = -np.infty*np.ones(opts.Ngrid**2, dtype=float)
 conv_lnProb = -np.infty*np.ones(opts.Ngrid**2, dtype=float)
+fuku_lnProb = -np.infty*np.ones(opts.Ngrid**2, dtype=float)
 imps_lnProb = -np.infty*np.ones(opts.Ngrid**2, dtype=float)
+dirc_lnProb = -np.infty*np.ones(opts.Ngrid**2, dtype=float)
 
 #------------------------
 
@@ -133,6 +139,7 @@ for ind, (rhoA2o, rhoB2o) in enumerate(zip(*samples)):
     assert np.all(lnProb==lnProb)
     assert np.all(conv_lnProb==conv_lnProb)
     assert np.all(imps_lnProb==imps_lnProb)
+    assert np.all(dirc_lnProb==dirc_lnProb)
 
     if opts.Verbose:
         print( "  %d / %d"%(ind+1, opts.Nsamp) )
@@ -170,6 +177,22 @@ for ind, (rhoA2o, rhoB2o) in enumerate(zip(*samples)):
     ).flatten() ### flatten this to get the correct shape
     conv_lnProb = utils.sumLogs(np.array([conv_lnProb, dprob]), axis=0)
 
+    if opts.Verbose:
+        print( "        %.3f sec"%(time.time()-t0) )
+        print( "    marginalizing via spectral convolution (fuckU)" )
+        t0 = time.time()
+    dprob = utils.fuckU_convolve_samplingErrors(
+        lnbsn, ### need to use these because we want 2D shape
+        lnbci,
+        rhoA2o,
+        rhoB2o,
+        params,
+        frac=opts.frac,
+        tukey_alpha=opts.tukey_alpha,
+        f_tol=opts.f_tol,
+    ).flatten() ### flatten this to get the correct shape
+    fuku_lnProb = utils.sumLogs(np.array([fuku_lnProb, dprob]), axis=0)
+
     ### importance sample
     if opts.Verbose:
         print( "        %.3f sec"%(time.time()-t0) )
@@ -188,26 +211,53 @@ for ind, (rhoA2o, rhoB2o) in enumerate(zip(*samples)):
     # add to marginalized posterior
     imps_lnProb = utils.sumLogs(np.array([imps_lnProb, dprob]), axis=0)
 
+    ### direct integration
+    if opts.Verbose:
+        print( "        %.3f sec"%(time.time()-t0) )
+        print( "    marginalize via direct integration" )
+        t0 = time.time()
+    dprob = utils.directIntegrate_samplingErrors(
+        lnBSN,
+        lnBCI,
+        rhoA2o,
+        rhoB2o,
+        params,
+        frac=opts.frac,
+        f_tol=opts.f_tol,
+        Nint=opts.Nint,
+    )
+    # add to marginalized posterior
+    dirc_lnProb = utils.sumLogs(np.array([dirc_lnProb, dprob]), axis=0)
+
     if opts.Verbose:
         print( "        %.3f sec"%(time.time()-t0) )
 
 if opts.force_normalization:
     lnProb -= utils.sumLogs(lnProb)
     conv_lnProb -= utils.sumLogs(conv_lnProb)
+    fuku_lnProb -= utils.sumLogs(fuku_lnProb)
     imps_lnProb -= utils.sumLogs(imps_lnProb)
+    dirc_lnProb -= utils.sumLogs(dirc_lnProb)
 
 else:
-    lnProb -= np.log(opts.Nsamp) ### normalize
-    conv_lnProb -= np.log(opts.Nsamp)
-    imps_lnProb -= np.log(opts.Nsamp)
+    d = np.log(opts.Nsamp)
+    lnProb -= d ### normalize
+    conv_lnProb -= d
+    fuku_lnProb -= d
+    imps_lnProb -= d
+    dirc_lnProb -= d
 
 lnProb = lnProb.reshape((opts.Ngrid,opts.Ngrid)) ### reshape to a raster of pixels
 conv_lnProb = conv_lnProb.reshape((opts.Ngrid,opts.Ngrid))
+fuku_lnProb = fuku_lnProb.reshape((opts.Ngrid,opts.Ngrid))
 imps_lnProb = imps_lnProb.reshape((opts.Ngrid,opts.Ngrid))
+dirc_lnProb = dirc_lnProb.reshape((opts.Ngrid,opts.Ngrid))
 
 assert np.all(lnProb==lnProb)
 assert np.all(conv_lnProb==conv_lnProb)
+assert np.all(fuku_lnProb==fuku_lnProb)
 assert np.all(imps_lnProb==imps_lnProb)
+assert np.all(dirc_lnProb==dirc_lnProb)
 
 print( "WARNING: need to write posterior to disk in a recoverable way" )
 
@@ -220,7 +270,9 @@ extent = [np.min(lnBSN), np.max(lnBSN), np.min(lnBCI), np.max(lnBCI)]
 
 for z, label, tag, in [(lnProb,      'p(\ln B^S_N,\ln B^C_I|\Delta=\Delta^\prime=0)', 'mode'), \
                        (conv_lnProb, 'p(\ln B^S_N,\ln B^C_I)',                        'conv'), \
-                       (imps_lnProb, 'p(\ln B^S_N,\ln B^C_I)',                        'imps')]:
+                       (fuku_lnProb, 'p(\ln B^S_N,\ln B^C_I)',                        'fuku'), \
+                       (imps_lnProb, 'p(\ln B^S_N,\ln B^C_I)',                        'imps'), \
+                       (dirc_lnProb, 'p(\ln B^S_N,\ln B^C_I)',                        'dirc')]:
 
     if opts.Verbose:
         t0 = time.time()
