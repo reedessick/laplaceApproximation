@@ -5,6 +5,11 @@ This formalism should allow us to determine the expected distributions for any "
 
 ## To Do
 
+NOTE: we may want to work with ln(lnBSN) instead of just lnBSN. 
+This should scale roughly linearly with lnBCI and could make grid placement much easier.
+The transformation of the probability distribution is also relatively trivial, and we will likely be able to include the effects of sampling errors without much of a headache.
+This could allow us to better resolve sharp edges when performing the numeric spectral convolution, which may be an issue with our current set-up.
+
 ### laplaceApprox/utils.py
 
   - write/test (marginalized) 1D posteriors for 
