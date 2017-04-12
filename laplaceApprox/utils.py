@@ -190,11 +190,23 @@ def lnProb_lnBSNlnBCI_given_rhoA2orhoB2o( lnBSN, lnBCI, rhoA2o, rhoB2o, params, 
                               ### prevent nans from showing up in the first place
     return ans
 
+def lnProb_lnlnBSNlnBCI_given_rhoA2orhoB2o( lnlnBSN, lnBCI, rhoA2o, rhoB2o, params, f_tol=1e-10 ):
+    '''
+    return ln( p(ln(lnBSN), lnBCI | rhoA2o, rhoB2o) )
+
+    NOTE: 2 independent chi2 distributions with jacobian for transformation of variables
+    '''
+    ans = lnlnBSN + lnProb_lnBSNlnBCI_given_rhoA2orhoB2o(np.exp(lnBSN), lnBCI, rhoA2o, rhoB2o, params, f_tol=f_tol)
+    ans[ans!=ans] = -np.infty ### get rid of nans
+                              ### FIXME we may want to be smarter about this and 
+                              ### prevent nans from showing up in the first place
+    return ans
+
 #--- marginal distributions
 
 def lnProb_rhoA2_given_rhoA2o( rhoA2, rhoA2o ):
     '''
-    return ln( p(rhoA2 | rhoA2o)
+    return ln( p(rhoA2 | rhoA2o) )
 
     NOTE: essentially a chi2 distribution
     '''
@@ -216,7 +228,7 @@ def lnProb_rhoA2_given_rhoA2o( rhoA2, rhoA2o ):
 
 def lnProb_rhoB2_given_rhoB2o( rhoB2, rhoB2o ):
     '''
-    return ln( p(rhoB2 | rhoB2o)
+    return ln( p(rhoB2 | rhoB2o) )
 
     NOTE: essentially a chi2 distribution
     '''
@@ -224,25 +236,31 @@ def lnProb_rhoB2_given_rhoB2o( rhoB2, rhoB2o ):
 
 def lnProb_rho2_given_rhoA2orhoB2o( rho2, rhoA2o, rhoB2o ):
     '''
-    return ln( p(rho2 | rhoA2o, rhoB2o)
+    return ln( p(rho2 | rhoA2o, rhoB2o) )
     '''
     raise NotImplementedError
 
 def lnProb_eta2_given_rhoA2orhoB2o( eta2, rhoA2o, rhoB2o ):
     '''
-    return ln( p(eta2 | rhoA2o, rhoB2o)
+    return ln( p(eta2 | rhoA2o, rhoB2o) )
     '''
     raise NotImplementedError
 
 def lnProb_lnBSN_given_rhoA2orhoB2o( lnBSN, rhoA2o, rhoB2o, params, f_tol=1e-10 ):
     '''
-    return ln( p(lnBSN | rhoA2o, rhoB2o)
+    return ln( p(lnBSN | rhoA2o, rhoB2o) )
     '''
     raise NotImplementedError
 
 def lnProb_lnBCI_given_rhoA2orhoB2o( lnBCI, rhoA2o, rhoB2o, params ):
     '''
-    return ln( p(lnBCI | rhoA2o, rhoB2o)
+    return ln( p(lnBCI | rhoA2o, rhoB2o) )
+    '''
+    raise NotImplementedError
+
+def lnProb_lnlnBSN_given_rhoA2orhoB2o( lnlnBSN, rhoA2o, rhoB2o, params ):
+    '''
+    return ln( p(ln(lnBSN) | rhoA2o, rhoB2o) )
     '''
     raise NotImplementedError
 

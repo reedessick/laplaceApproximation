@@ -10,6 +10,9 @@ This should scale roughly linearly with lnBCI and could make grid placement much
 The transformation of the probability distribution is also relatively trivial, and we will likely be able to include the effects of sampling errors without much of a headache.
 This could allow us to better resolve sharp edges when performing the numeric spectral convolution, which may be an issue with our current set-up.
 
+We may want to transform into ln(lnBSN) when computing the numeric marginalization (the actual transformation should be pretty straightforward) in order to improve our ability to grid the space.
+We can then transform back to just lnBSN to present the results if we want...
+
 ### laplaceApprox/utils.py
 
   - write/test (marginalized) 1D posteriors for 
