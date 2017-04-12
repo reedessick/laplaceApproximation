@@ -10,8 +10,12 @@ This should scale roughly linearly with lnBCI and could make grid placement much
 The transformation of the probability distribution is also relatively trivial, and we will likely be able to include the effects of sampling errors without much of a headache.
 This could allow us to better resolve sharp edges when performing the numeric spectral convolution, which may be an issue with our current set-up.
 
-We may want to transform into ln(lnBSN) when computing the numeric marginalization (the actual transformation should be pretty straightforward) in order to improve our ability to grid the space.
+We may want to transform into ln(lnBSN) when computing the numeric marginalization (the actual transformation should be pretty straightforward) in order to improve our ability to grid the space (grid on some angle between lnBCI and lnlnBSN set by params.c_bci; fourier conjugates will be mixed in some weird way).
 We can then transform back to just lnBSN to present the results if we want...
+
+We may also want to try to soften the "hard edges" in the distribution by an appropriate change of coordinates. 
+If we can map the "coordinate discontinuity" to infty somehow, this could help significantly.
+Again, the fourier components may be mixed in some weird way here and we'd have to think about it carefully. 
 
 ### laplaceApprox/utils.py
 
