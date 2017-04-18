@@ -113,6 +113,9 @@ def rhoA2rhoB2_to_rho2eta2( rhoA2, rhoB2 ):
     '''
     converts rhoA2, rhoB2 -> rho2, eta2
     '''
+    if (rhoA2==0) and (rhoB2==0):
+        return 0.0, 0.0
+
     rho2 = rhoA2+rhoB2
     return rho2, rhoA2*rhoB2/rho2
 
@@ -294,6 +297,14 @@ known = {
     'malmquist' : [
     ],
     'background' : [
+        'nonGauss_fracA',
+        'min_rhoA2o',
+        'max_rhoA2o',
+        'paretoA',
+        'nonGauss_fracB',
+        'min_rhoB2o',
+        'max_rhoB2o',
+        'paretoB',
     ],
 }
 
@@ -326,10 +337,46 @@ def sample_rhoA2orhoB2o( Nsamp, distrib='uniform', **kwargs ):
         raise NotImplementedError, 'like isotropic, but includes cuts that mimic what detection pipelines do'
 
     elif distrib=="background":
-        raise NotImplementedError, "a mixture of a chi2 (from Gaussian noise) and a pareto distribution (with some lower bound to make it normalizable)"
+        return \
+            sample_background( Nsamp, kwargs['nonGauss_fracA'], kwargs['min_rhoA2o'], kwargs['max_rhoA2o'], kwargs['paretoA'] ), \
+            sample_background( Nsamp, kwargs['nonGauss_fracB'], kwargs['min_rhoB2o'], kwargs['max_rhoB2o'], kwargs['paretoB'] ) 
 
     else:
         raise ValueError, 'no sampling algorithm defined for distrib=%s. Please choose from : %s'%(distrib, ', '.join(known.keys()))
+
+#---
+
+def sample_background( Nsamp, nonGauss_frac, min_rho2o, max_rho2o, pareto ):
+    '''
+    draws samples from the expected background distribution
+
+    p(rhoA2o) ~ (1-nonGauss_frac)*delta(rhoA2o=0) + nonGauss_frac*pareto( paretoA, min_rhoA2, max_rhoA2 )
+
+    where pareto(a, min, max) describes a power law distribution with exponent a bounded between min and max
+    '''
+    samples = [1e-3]*np.sum(np.random.rand(Nsamp)>nonGauss_frac) ### get the Gaussian noise samples
+    ### FIXME: 
+    ###    use use 1e-3 above because things break if I supply zero exactly. We really just want the Gaussian component
+    ###    to be much smaller than 1, so this should be ok...
+
+    if len(samples) < Nsamp:
+        samples += list(sample_pareto( Nsamp-len(samples), min_rho2o, max_rho2o, pareto )) ### draw nonGaussian samples from pareto
+
+    np.random.shuffle(samples) ### randomize the order
+
+    return samples
+
+def sample_pareto( Nsamp, minimum, maximum, exponent ):
+    '''
+    samples pareto distribution
+    '''
+    if exponent==-1: ### special case
+        return minimum*np.exp(np.log(maximum/minimum)*np.random.rand(Nsamp))
+
+    else:
+        a = exponent+1
+        m = minimum**a
+        return (m + np.random.rand(Nsamp)*(maximum**a - m))**(1./a)
 
 #-------------------------------------------------
 
@@ -366,7 +413,7 @@ def sigma_lnBSN( rho2o, params, frac=0.01 ):
     '''
     we assume the sampling error scales as a constant fraction of what was injected
     '''
-    return frac*rho2_to_lnBSN( rho2o, params )
+    return frac*np.abs(rho2_to_lnBSN( rho2o, params ))
 
 def sigma_singles( rhoA2o, rhoB2o, params, frac=0.01 ):
     '''
