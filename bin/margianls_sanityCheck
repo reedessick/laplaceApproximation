@@ -1,0 +1,100 @@
+#!/usr/bin/python
+
+__usage__ = 'marginals_sanityCheck [--options] key,value key,value key,value ...'
+__description__ = "written to make sure the posteriors for individual parameters follow the expected trends as we inject a population of signals. Key value pairs are passed to laplaceApprox.utils.sample_rhoA2orhoB2o after values are cast to floats"
+__author__ = "Reed Essick (reed.essick@ligo.org)"
+
+#-------------------------------------------------
+
+import os
+import numpy as np
+
+import time
+
+from laplaceApprox import utils
+
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
+from optparse import OptionParser
+
+#-------------------------------------------------
+
+parser = OptionParser(usage=__usage__, description=__description__)
+
+### verbosity and output
+
+parser.add_option('-v', '--verbose', default=False, action='store_true')
+parser.add_option('-V', '--Verbose', default=False, action='store_true')
+
+parser.add_option('', '--colormap', default='OrRd', type='string')
+parser.add_option('', '--contour-color', default='w', type='string')
+parser.add_option('', '--overlay-color', default='k', type='string',
+    help='the color used to plot the expected scalings')
+
+parser.add_option('', '--figwidth', default=6, type='float')
+parser.add_option('', '--figheight', default=5, type='float')
+
+parser.add_option('-o', '--output-dir', default='.', type='string')
+parser.add_option('-t', '--tag', default='', type='string')
+
+### parameters for scaling relation
+
+parser.add_option('', '--c_bsn', default=1.0, type='float',
+    help='passed to BayesMapParams')
+parser.add_option('', '--g_bsn', default=1.0, type='float',
+    help='passed to BayesMapParams')
+parser.add_option('', '--c_bci', default=1.0, type='float',
+    help='passed to BayesMapParams')
+parser.add_option('', '--g_bci', default=1.0, type='float',
+    help='passed to BayesMapParams')
+
+parser.add_option('', '--f_tol', default=1e-10, type='float',
+    help='numerical precision used when converting lnBSN -> rho2')
+
+### distribution
+
+parser.add_option('', '--Nsamp', default=100, type='int',
+    help='number of "samples" to draw from distribution of (rho2Ao, rho2Bo)')
+
+parser.add_option('', '--distrib', default='uniform', type='string',
+    help='the type of distribution used to sample (rho2Ao, rho2Bo). Must be one of : %s'%(', '.join(utils.known)))
+
+opts, args = parser.parse_args()
+
+if opts.tag:
+    opts.tag = "_"+opts.tag
+
+if not os.path.exists(opts.output_dir):
+    os.makedirs(opts.output_dir)
+
+opts.verbose = opts.verbose or opts.Verbose
+
+### set up kwargs for utils.sample_rhoA2orhoB2o
+kwargs = dict((key,float(value)) for key, value in [arg.split(',') for arg in args])
+
+#-------------------------------------------------
+
+if opts.verbose:
+    print( "drawing samples" )
+samples = utils.sample_rhoA2orhoB2o( opts.Nsamp, distrib=opts.distrib, **kwargs )
+
+#------------------------
+
+raise NotImplementedError, '''\
+need to generate marginal distributions for
+    rhoA2
+    rhoB2
+    rho2
+    eta2
+    lnBSN
+    lnlnBSN
+    lnBCI
+
+-> need to define these routines within utils.py
+    then this should just be straightforward delegation and plotting
+'''
+
+### set up scaling relation
+params = utils.BayesMapParams(c_bsn=opts.c_bsn, g_bsn=opts.g_bsn, c_bci=opts.c_bci, g_bci=opts.g_bci)
